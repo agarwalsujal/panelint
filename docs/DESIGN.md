@@ -1,6 +1,6 @@
 # Panelint — Technical Design
 
-**Last updated:** 2026-08-04 · Status: pre-implementation
+**Last updated:** 2026-08-06 · Status: implemented; see README § Status
 **Revision [v2]:** dependency claims verified by installing and running the packages. Several
 load-bearing assumptions in v1 were wrong; each is marked and corrected below.
 
@@ -281,8 +281,9 @@ rules writing three validators is how they drift.
 > import is **`Ajv2020` from `ajv/dist/2020`**.
 
 Vendoring the schema rather than fetching it keeps scans offline and makes spec-version drift an
-explicit, reviewable commit. `scripts/refresh-schema.ts` re-copies from a pinned ext-apps version
-and fails if the diff is non-empty.
+explicit, reviewable commit. A refresh script that re-copies from a pinned ext-apps version and
+fails on a non-empty diff is **specified but not yet written** — the vendored files are currently
+refreshed by hand.
 
 > ⚠ **The vendored schema is generated from the SDK's `src/`, which tracks `main` — it is not a
 > frozen artifact of the 2026-01-26 Stable spec.** It contains draft-only constructs. Every
@@ -667,9 +668,9 @@ panelint/
 │   ├── report/      text.ts · json.ts · sarif.ts
 │   └── config/      load.ts · baseline.ts · suppress.ts
 ├── schema/          vendored schema.json + VERSION, pinned to an ext-apps release
-├── scripts/         refresh-schema.ts · census/
+├── scripts/         build-registry.mjs · pack-smoke.mjs · census/
 ├── fixtures/
-│   ├── reference/   captured ext-apps example servers — must scan clean
+│   ├── reference/   upstream/ real ext-apps files · conformant/ synthetic server shapes
 │   └── malicious/   one positive case per rule, plus the limit-exceeded cases
 └── test/            corpus.test.ts · malicious.test.ts · registry-docs.test.ts · never-fire.test.ts
 ```

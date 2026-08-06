@@ -10,7 +10,7 @@ common failure:
 
 ## 1. Reporting a vulnerability in Panelint
 
-Report privately via [GitHub Security Advisories](https://github.com/panelint/panelint/security/advisories/new).
+Report privately via [GitHub Security Advisories](https://github.com/agarwalsujal/panelint/security/advisories/new).
 Do not open a public issue.
 
 Acknowledgement within 72 hours; a fix or a documented decision within 30 days.

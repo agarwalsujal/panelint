@@ -230,7 +230,7 @@ export interface UndecidedCause {
 export function undecidedByCause(notes: readonly UndecidedNote[]): UndecidedCause[] {
   const counts = new Map<string, UndecidedCause>();
   for (const note of notes) {
-    const key = `${note.ruleId} ${note.reason}`;
+    const key = `${note.ruleId}\u0000${note.reason}`;
     const existing = counts.get(key);
     if (existing) existing.count += 1;
     else counts.set(key, { ruleId: note.ruleId, reason: note.reason, count: 1 });

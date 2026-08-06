@@ -164,3 +164,87 @@ describe('scanDirectory — DoS budgets', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// The decoy-declaration gate bypass.
+// ---------------------------------------------------------------------------
+
+/**
+ * A file that merely MENTIONS a `ui://` URI must not be able to hide the file
+ * that declares it.
+ *
+ * Resolution routes (b) and (c) read the declaring file, and `declared` used to
+ * keep only the FIRST file the walk reached — so whichever file sorted earlier
+ * decided whether the resource resolved at all. A README line, a changelog
+ * entry, or a test fixture naming the URI stole the declaration, the real
+ * resource became UNRESOLVED_URI, and the scan reported zero findings.
+ *
+ * That is an attacker-controlled false negative: a pull request author adds one
+ * innocuous line and the scanner reports clean. CLAUDE.md §3 names a finding on
+ * conformant code as the highest-severity bug this project has; this is its
+ * mirror image, and it is worse, because a false positive is loud.
+ *
+ * Measured before the fix, on this exact tree: 1 finding and exit 1 without the
+ * decoy, 0 findings and exit 0 with it.
+ */
+describe('a decoy mention cannot hide a real declaration', () => {
+  const build = (withDecoy: boolean): string => {
+    const root = mkdtempSync(join(tmpdir(), 'panelint-decoy-'));
+    mkdirSync(join(root, 'src'), { recursive: true });
+    mkdirSync(join(root, 'templates'), { recursive: true });
+
+    // The real declaration: a literal read call naming a path. Route (c), so it
+    // can only resolve from the file that contains it.
+    writeFileSync(
+      join(root, 'src', 'loader.js'),
+      'const html = fs.readFileSync("templates/loaded.html", "utf8");\n' +
+        'server.resource("ui://demo/loaded", { mimeType: "text/html;profile=mcp-app" });\n',
+    );
+    writeFileSync(
+      join(root, 'templates', 'loaded.html'),
+      '<!doctype html><html><body><p>loaded</p></body></html>\n',
+    );
+
+    if (withDecoy) {
+      // Sorts before src/ in the walk, and does nothing but name the URI.
+      writeFileSync(join(root, '0000-NOTES.md'), 'Docs: ui://demo/loaded is the loaded view.\n');
+    }
+    return root;
+  };
+
+  it('resolves the resource whether or not a decoy sorts first', () => {
+    const plain = build(false);
+    const decoyed = build(true);
+    try {
+      const a = scanDirectory(plain);
+      const b = scanDirectory(decoyed);
+
+      expect(a.resources.map((r) => r.uri)).toContain('ui://demo/loaded');
+      expect(
+        b.resources.map((r) => r.uri),
+        'a decoy mention hid the real declaration — the gate bypass is back',
+      ).toContain('ui://demo/loaded');
+
+      // Same content, not merely the same count.
+      expect(b.resources.find((r) => r.uri === 'ui://demo/loaded')?.contentHash).toBe(
+        a.resources.find((r) => r.uri === 'ui://demo/loaded')?.contentHash,
+      );
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+      rmSync(decoyed, { recursive: true, force: true });
+    }
+  });
+
+  it('does not report UNRESOLVED_URI for a URI that a later file resolves', () => {
+    const root = build(true);
+    try {
+      const set = scanDirectory(root);
+      const unresolved = set.diagnostics
+        .filter((d) => d.code === 'UNRESOLVED_URI')
+        .map((d) => String(d.resourceUri));
+      expect(unresolved).not.toContain('ui://demo/loaded');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

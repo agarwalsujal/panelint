@@ -62,6 +62,28 @@ describe('the published API surface', () => {
     expect(Object.keys(panelint)).not.toContain('replayCapture');
   });
 
+  it('exposes a rule registry that cannot be emptied', () => {
+    // An unfrozen array on a public API lets a consumer — or anything it pulls
+    // in — run `ALL_RULES.length = 0` and turn the scanner into a no-op that
+    // finds nothing and exits 0. A `ReadonlyMap` type likewise does not stop
+    // `.delete()` at runtime.
+    expect(Object.isFrozen(panelint.ALL_RULES)).toBe(true);
+
+    const before = panelint.ALL_RULES.length;
+    try {
+      (panelint.ALL_RULES as unknown as { length: number }).length = 0;
+    } catch {
+      /* strict mode throws; non-strict silently no-ops. Either is fine. */
+    }
+    expect(panelint.ALL_RULES.length).toBe(before);
+
+    expect(() =>
+      (panelint.RULES_BY_ID as unknown as Map<string, unknown>).delete('PANE-EXFIL-001'),
+    ).toThrow(TypeError);
+    expect(panelint.RULES_BY_ID.size).toBe(before);
+    expect(panelint.selectRules({ experimental: true }).length).toBe(before);
+  });
+
   it('carries a rule registry that is not empty', () => {
     // A tree-shaking or build misconfiguration that emptied the registry would
     // leave every other assertion here passing.

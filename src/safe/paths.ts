@@ -110,6 +110,26 @@ export function resolveContained(root: string, candidate: string): ContainedPath
   return { ok: true, absolute: real, relative: relative(rootReal, real) };
 }
 
+/**
+ * Is `candidate` the same file as, or inside, `root`?
+ *
+ * Both sides are realpath'd first, so a symlink cannot answer "outside" for a
+ * file that is really inside. Used to refuse a baseline file that lives in the
+ * tree being scanned — a baseline accepts findings, so a scanned repository
+ * supplying its own is the same class of hole as a repo config lowering its own
+ * severities.
+ *
+ * Falls back to the lexical answer when either path cannot be realpath'd, and
+ * a path that cannot be resolved is treated as inside: the caller uses this to
+ * REFUSE, so an unresolvable path should fail closed.
+ */
+export function isInside(root: string, candidate: string): boolean {
+  const rootReal = safeRealpath(root);
+  const candReal = safeRealpath(candidate);
+  if (!rootReal) return true;
+  return isUnder(rootReal, candReal ?? resolve(candidate));
+}
+
 function isUnder(root: string, candidate: string): boolean {
   if (candidate === root) return true;
   return candidate.startsWith(root.endsWith(sep) ? root : root + sep);

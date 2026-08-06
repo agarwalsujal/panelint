@@ -33,6 +33,7 @@ import { renderJson } from './report/json.js';
 import { renderSarif } from './report/sarif.js';
 import { selectExitCode, type OnError } from './exit.js';
 import { resolveLimits } from './limits.js';
+import { isInside } from './safe/paths.js';
 import { ALL_SEVERITIES, type ResourceSet, type RuleMeta, type Severity } from './types.js';
 import type { ReportResource, ScanReport, ScanMode } from './report/types.js';
 
@@ -85,6 +86,13 @@ program
     false,
   )
   .option('--allow-repo-config', 'let a config file in the scanned tree lower severities', false)
+  .option(
+    '--allow-repo-baseline',
+    'permit a baseline file that lives inside the scanned directory. Off by default: a ' +
+      'baseline accepts findings, and every field it matches on is printed by ' +
+      '`--format json`, so a tree that supplies its own baseline can clear itself.',
+    false,
+  )
   // The server command after `--` is read from process.argv, not from
   // commander's operands. Without this, commander rejects it as excess.
   .allowExcessArguments(true)
@@ -136,6 +144,28 @@ async function runScan(
     allowRepoConfig: Boolean(opts['allowRepoConfig']),
     trustInlineSuppressions: Boolean(opts['trustInlineSuppressions']),
   });
+
+  // A baseline inside the scanned tree is a suppression file the scanned
+  // repository controls, which is the door `--allow-repo-config` and
+  // `--trust-inline-suppressions` are both closed to keep shut. It was open:
+  // a baseline entry needs fingerprint, ruleId, resourceUri and contentHash,
+  // and all four are printed by `panelint scan . --format json`, so a pull
+  // request author could accept their own findings and go green.
+  //
+  // Refused by default, allowed with an explicit flag, exactly like a repo
+  // config. A baseline OUTSIDE the scanned tree — the normal case, held by the
+  // operator — is unaffected.
+  if (opts['baseline'] && !opts['allowRepoBaseline'] && !live && isDirectory(absolute)) {
+    const baselineAbs = resolvePath(String(opts['baseline']));
+    if (isInside(absolute, baselineAbs)) {
+      process.stderr.write(
+        'panelint: the baseline file is inside the scanned directory, so the scanned ' +
+          'tree can accept its own findings. Move it outside, or pass ' +
+          '--allow-repo-baseline if you control that file.\n',
+      );
+      return 2;
+    }
+  }
 
   // A baseline that fails to load is a scan error, not an empty baseline —
   // silently proceeding with zero accepted findings would re-report everything
@@ -306,7 +336,7 @@ program
     process.stdout.write(
       `${pad('ID', 22)}${pad('CLASS', 8)}${pad('SEVERITY', 10)}${pad('CONF', 9)}TITLE\n`,
     );
-    for (const r of ALL_RULES as RuleMeta[]) {
+    for (const r of ALL_RULES as readonly RuleMeta[]) {
       const flag = r.experimental ? ' (experimental)' : '';
       process.stdout.write(
         `${pad(r.id, 22)}${pad(r.ruleClass, 8)}${pad(r.severity, 10)}${pad(r.confidence, 9)}${r.title}${flag}\n`,

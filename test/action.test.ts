@@ -125,7 +125,19 @@ describe('no workflow expression is interpolated into a shell script', () => {
   it('validates the version input before it becomes a package specifier', () => {
     // `npm install panelint@$X` with an unvalidated X accepts a git URL or a
     // local path, which is arbitrary code from an arbitrary source.
-    expect(action).toMatch(/grep -qE .\^\[A-Za-z0-9\]/);
+    //
+    // Must be bash's `=~`, not `grep -q`. grep is line-oriented and succeeds if
+    // ANY line matches, so $'0.1.0\n$(id)' passed the check that was meant to
+    // reject it. `=~` anchors against the whole string.
+    expect(action).toMatch(/\[\[ ! "\$PANELINT_VERSION" =~ \^\[A-Za-z0-9\]/);
+    expect(action, 'grep -q is line-oriented and cannot anchor this').not.toMatch(/grep -qE/);
+  });
+
+  it('installs with lifecycle scripts disabled', () => {
+    // This installs onto a third-party runner holding that repository's
+    // GITHUB_TOKEN. A postinstall hook anywhere in the dependency tree would
+    // run there with those credentials.
+    expect(action).toMatch(/npm install .*--ignore-scripts/);
   });
 });
 

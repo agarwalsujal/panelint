@@ -162,8 +162,8 @@ have a threat model.
 
 **Implemented and green. Not yet published to npm.**
 
-All **93 catalogued rules** are implemented and registered. The suite is **1115 tests across 30
-files**, and `npm run typecheck` and `npm run build` are clean. Install from source for now:
+All **93 catalogued rules** are implemented and registered, and `npm run typecheck`, `npm run build`
+and `npm test` are clean. Install from source for now:
 `npm ci && npm run build && node dist/cli.js scan ./your-server`.
 
 The false-positive gate is the part worth checking before you trust any of the above.

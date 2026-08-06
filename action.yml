@@ -134,11 +134,19 @@ runs:
         set -euo pipefail
         # Refuse anything that is not a plain version or dist-tag before it
         # reaches a package specifier.
-        if ! printf '%s' "$PANELINT_VERSION" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+        # `grep -q` is line-oriented and succeeds if ANY line matches, so
+        # $'0.1.0\n$(id)' passed the check it was supposed to fail. bash's =~
+        # anchors against the whole string.
+        if [[ ! "$PANELINT_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
           echo "::error::invalid version input"
           exit 2
         fi
-        npm install --global --no-audit --no-fund "panelint@${PANELINT_VERSION}"
+        # --ignore-scripts: this installs into a third-party runner that holds
+        # that repository's GITHUB_TOKEN. A postinstall hook in panelint or in
+        # anything it depends on would run there with those credentials, which
+        # is the eslint-config-prettier scenario docs/THREAT-MODEL.md §5 cites.
+        # Panelint needs no install script to run.
+        npm install --global --no-audit --no-fund --ignore-scripts "panelint@${PANELINT_VERSION}"
 
     - name: Scan
       id: scan

@@ -243,7 +243,7 @@ export function evaluateDeclaredCsp(csp: UIResourceCsp | null | undefined): Adap
     const value = (finding.value ?? '').trim().toLowerCase();
     for (const entry of contributors) {
       if (entry.value.trim().toLowerCase() !== value) continue;
-      const key = `${entry.array} ${entry.index} ${finding.type}`;
+      const key = `${entry.array}\u0000${entry.index}\u0000${finding.type}`;
       const existing = byEntry.get(key);
       if (existing) {
         if (!existing.directives.includes(finding.directive)) existing.directives.push(finding.directive);

@@ -94,13 +94,38 @@ import type { AnyRule } from '../types.js';
 const body = `
 ${imports.join('\n')}
 
-/** Every rule Panelint knows about, in ID order. */
-export const ALL_RULES: AnyRule[] = [
-${members.map((n) => `  ${n},`).join('\n')}
-].sort((a, b) => a.id.localeCompare(b.id)) as AnyRule[];
+/**
+ * Every rule Panelint knows about, in ID order.
+ *
+ * Frozen because src/index.ts exports it. An unfrozen array on a public API
+ * lets any code in the process — a consumer, or anything it pulls in — run
+ * \`ALL_RULES.length = 0\` and turn the scanner into a no-op that finds nothing
+ * and exits 0. That is the "gate that silently stopped scanning" failure the
+ * corpus tests exist to catch, reachable from outside.
+ */
+export const ALL_RULES: readonly AnyRule[] = Object.freeze(
+  [
+${members.map((n) => `    ${n},`).join('\n')}
+  ].sort((a, b) => a.id.localeCompare(b.id)) as AnyRule[],
+);
 
-export const RULES_BY_ID: ReadonlyMap<string, AnyRule> = new Map(
-  ALL_RULES.map((r) => [r.id, r] as const),
+/**
+ * A \`ReadonlyMap\` type does not stop \`.set()\` or \`.delete()\` at runtime, and
+ * this map is exported too, so the mutators are replaced rather than typed away.
+ */
+export const RULES_BY_ID: ReadonlyMap<string, AnyRule> = Object.assign(
+  new Map(ALL_RULES.map((r) => [r.id, r] as const)),
+  {
+    set(): never {
+      throw new TypeError('RULES_BY_ID is immutable');
+    },
+    delete(): never {
+      throw new TypeError('RULES_BY_ID is immutable');
+    },
+    clear(): never {
+      throw new TypeError('RULES_BY_ID is immutable');
+    },
+  },
 );
 
 /** Rules that run for a given scan, honouring --experimental. */

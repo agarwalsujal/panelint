@@ -76,6 +76,17 @@ const LITERAL_READ_RE =
 const HTML_LITERAL_RE =
   /(?:"""|'''|`|"|')(\s*(?:<!DOCTYPE[^>]*>)?\s*<(?:html|body)\b[\s\S]{0,200000}?<\/(?:html|body)>\s*)(?:"""|'''|`|"|')/gi;
 
+/**
+ * How many distinct files may be remembered as declaring one URI.
+ *
+ * Every site is a resolution candidate, so this bounds the work a hostile tree
+ * can force: mentioning one URI in 50,000 files must not turn into 50,000
+ * resolution attempts. Real repositories declare a resource in one file and
+ * mention it in a handful more — a README, a test, a changelog — so this is far
+ * above any honest use and far below anything expensive.
+ */
+const MAX_DECLARATION_SITES = 32;
+
 interface DeclaredUri {
   uri: string;
   /** Repo-relative path of the file that declared it. */
@@ -125,7 +136,26 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
 
   /** Repo-relative path → file text. Only files that were read. */
   const fileText = new Map<string, string>();
-  const declared = new Map<string, DeclaredUri>();
+  /**
+   * URI → **every** file that mentions it, in walk order.
+   *
+   * This was `Map<string, DeclaredUri>` — first mention wins — and that was an
+   * attacker-controlled gate bypass. Routes (b) and (c) below look inside the
+   * declaring file, so whichever file the walk happened to reach first decided
+   * whether the resource resolved at all. A file that merely *mentions* the URI
+   * — a README line, a changelog entry, a test fixture — stole the declaration
+   * from the code that actually registers it, the real resource became
+   * UNRESOLVED_URI, and the scan reported zero findings and exited 0.
+   *
+   * Reproduced before the fix: a tree with a hostile `<form action=...>` gated
+   * at exit 1; adding one markdown file containing the URI took it to 0
+   * findings and exit 0. `UNRESOLVED_URI` is a diagnostic, so `--on-error fail`
+   * did not react either.
+   *
+   * Collecting every site and trying each is what closes it. Walk order stops
+   * mattering: a decoy can add a site, but it cannot remove the real one.
+   */
+  const declared = new Map<string, DeclaredUri[]>();
 
   const stopWalk = (key: string, observed: number, ceiling: number): boolean => {
     if (observed <= ceiling) return false;
@@ -201,16 +231,31 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
 
       for (const match of read.text.matchAll(UI_URI_RE)) {
         const uri = match[0];
-        if (declared.has(uri)) continue;
+        const site: DeclaredUri = {
+          uri,
+          declaredIn: relPosix,
+          declaredInAbsolute: contained.absolute,
+        };
+
+        const sites = declared.get(uri);
+        if (sites) {
+          // One file mentioning the same URI twice adds nothing to resolve
+          // from, and MAX_DECLARATION_SITES bounds a tree that mentions one URI
+          // in thousands of files.
+          if (
+            sites.length < MAX_DECLARATION_SITES &&
+            sites[sites.length - 1]?.declaredIn !== relPosix
+          ) {
+            sites.push(site);
+          }
+          continue;
+        }
+
         if (declared.size >= opts.maxDeclaredUris) {
           stopWalk('maxDeclaredUris', declared.size + 1, opts.maxDeclaredUris);
           return;
         }
-        declared.set(uri, {
-          uri,
-          declaredIn: relPosix,
-          declaredInAbsolute: contained.absolute,
-        });
+        declared.set(uri, [site]);
       }
     }
   };
@@ -231,11 +276,28 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
   // ── Step 3: resolve, in the fixed order (a) → (b) → (c) ──────────────────
   const resources: UIResource[] = [];
 
-  for (const decl of [...declared.values()].sort((a, b) => a.uri.localeCompare(b.uri))) {
-    const resolved =
-      resolveBySiblingFile(rootReal, decl, opts.maxFileBytes) ??
-      resolveByInlineLiteral(decl, fileText) ??
-      resolveByLiteralReadCall(rootReal, decl, fileText, opts.maxFileBytes);
+  const declaredSorted = [...declared.values()].sort((a, b) =>
+    (a[0]?.uri ?? '').localeCompare(b[0]?.uri ?? ''),
+  );
+
+  for (const sites of declaredSorted) {
+    const decl = sites[0]!;
+
+    // (a) depends only on the root and the URI's own path tail, so it is the
+    // same answer for every site and is tried once.
+    let resolved = resolveBySiblingFile(rootReal, decl, opts.maxFileBytes);
+
+    // (b) and (c) read the declaring file, so they are tried against EVERY file
+    // that mentions the URI. Trying only the first is what let a decoy that
+    // sorted earlier in the walk hide the real declaration.
+    if (!resolved) {
+      for (const site of sites) {
+        resolved =
+          resolveByInlineLiteral(site, fileText) ??
+          resolveByLiteralReadCall(rootReal, site, fileText, opts.maxFileBytes);
+        if (resolved) break;
+      }
+    }
 
     if (!resolved) {
       // Step 4. A diagnostic, never a finding — and it names only the URI. The
