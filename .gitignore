@@ -65,3 +65,10 @@ disclosures/
 npm-debug.log*
 pnpm-debug.log*
 yarn-error.log*
+
+# Audit and analysis scratch. Agents drop probe scripts at the repo root;
+# these are not product and must never ship.
+_audit_*
+.redos-sweep*
+.extract-tmp*
+undefined/
