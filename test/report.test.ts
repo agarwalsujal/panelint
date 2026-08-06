@@ -521,9 +521,53 @@ describe('sarif', () => {
     const loc = result.locations[0].physicalLocation;
     expect(loc.artifactLocation.uri).toBe('src/ui/forecast.html');
     expect(loc.artifactLocation.uri.startsWith('/')).toBe(false);
-    expect(loc.artifactLocation.uriBaseId).toBe('%SRCROOT%');
+    // No uriBaseId. It was previously emitted as '%SRCROOT%' with no matching
+    // originalUriBaseIds entry, which is unresolvable per the SARIF spec. A
+    // bare repository-relative URI is what GitHub documents.
+    expect(loc.artifactLocation.uriBaseId).toBeUndefined();
     expect(loc.region.startLine).toBe(4);
     expect(loc.region.startColumn).toBe(7);
+  });
+
+  it('prefixes file paths when the scan root is not the repository root', () => {
+    // filePath is relative to the scan root; GitHub resolves SARIF paths
+    // against the repository root. Scanning packages/server therefore emitted
+    // alerts pointing at paths that do not exist in the repository.
+    const report = directoryReport();
+    report.header.pathPrefix = 'packages/server';
+    const sarif = JSON.parse(renderSarif(report, RULES));
+
+    expect(sarif.runs[0].artifacts[0].location.uri).toBe(
+      'packages/server/src/ui/forecast.html',
+    );
+
+    const result = sarif.runs[0].results.find(
+      (r: { ruleId: string }) => r.ruleId === 'PANE-CSP-001',
+    );
+    expect(result.locations[0].physicalLocation.artifactLocation.uri).toBe(
+      'packages/server/src/ui/forecast.html',
+    );
+    // The properties block has to agree with the locations, or a consumer
+    // reading either one gets a different answer.
+    expect(sarif.runs[0].properties.resources[0].filePath).toBe(
+      'packages/server/src/ui/forecast.html',
+    );
+  });
+
+  it('refuses a traversing path prefix rather than emitting it', () => {
+    // The prefix reaches someone else's code scanning alerts. The CLI rejects
+    // these before rendering, but the renderer must not depend on its caller
+    // having done that — the same reasoning as neutralize().
+    const report = directoryReport();
+    report.header.pathPrefix = '../../etc';
+    const sarif = JSON.parse(renderSarif(report, RULES));
+
+    expect(sarif.runs[0].artifacts).toHaveLength(0);
+    const result = sarif.runs[0].results.find(
+      (r: { ruleId: string }) => r.ruleId === 'PANE-CSP-001',
+    );
+    expect(result.locations[0].physicalLocation).toBeUndefined();
+    expect(result.locations[0].logicalLocations).toBeDefined();
   });
 
   it('uses logicalLocations for a live-scanned resource with no file on disk', () => {

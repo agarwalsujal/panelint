@@ -112,6 +112,35 @@ try {
     'capture replay produces findings — the rule engine ran, it did not silently no-op',
   );
 
+  // The library entry point. package.json main/types/exports pointed at
+  // dist/index.js while src/index.ts did not exist — the CLI worked, the whole
+  // suite passed, and `import('panelint')` threw ERR_MODULE_NOT_FOUND for every
+  // consumer. Nothing caught it because nothing imported the package the way a
+  // consumer would.
+  const importProbe = join(sandbox, 'probe.mjs');
+  writeFileSync(
+    importProbe,
+    [
+      "import * as p from 'panelint';",
+      'if (typeof p.analyzeResourceSet !== "function") throw new Error("analyzeResourceSet missing");',
+      'if (!Array.isArray(p.ALL_RULES) || p.ALL_RULES.length === 0) throw new Error("empty registry");',
+      'if (typeof p.renderSarif !== "function") throw new Error("renderSarif missing");',
+      'console.log(p.ALL_RULES.length);',
+    ].join('\n'),
+  );
+  let imported = '';
+  try {
+    imported = run('node', [importProbe], sandbox).trim();
+  } catch (e) {
+    imported = `THREW: ${e.stderr ?? e.message}`;
+  }
+  assert(/^\d+$/.test(imported), "import('panelint') resolves and exports the API", imported);
+  assert(
+    imported === String(ruleList.length),
+    'the library and the CLI report the same rule count',
+    { library: imported, cli: ruleList.length },
+  );
+
   // A gate that stopped scanning would pass every assertion above.
   const shipped = readdirSync(join(sandbox, 'node_modules', 'panelint'));
   assert(shipped.includes('schema'), 'schema/ is present in the installed package', shipped);

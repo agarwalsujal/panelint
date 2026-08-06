@@ -33,6 +33,7 @@ import { encodeForSarif, type Untrusted } from '../safe/untrusted.js';
 import type { Finding, RuleClass, RuleMeta, Severity } from '../types.js';
 import {
   DISCLAIMER,
+  HOMEPAGE,
   evidenceText,
   identText,
   limitationFor,
@@ -96,9 +97,13 @@ function esc(s: string): string {
  * here means the worst case is a finding rendered without source context, not
  * an absolute path leaked into a SARIF upload.
  */
-export function repoRelativeUri(filePath: string | undefined): string | null {
+export function repoRelativeUri(filePath: string | undefined, pathPrefix?: string): string | null {
   if (!filePath) return null;
-  const normalized = filePath.replace(/\\/g, '/');
+  // Join first, validate second. A traversing or absolute prefix is then
+  // refused by the same rules that refuse a traversing filePath, instead of
+  // needing its own parallel set of checks that could drift apart.
+  const joined = pathPrefix ? `${pathPrefix}/${filePath}` : filePath;
+  const normalized = joined.replace(/\\/g, '/');
   if (normalized.includes('\0')) return null;
   if (normalized.startsWith('/')) return null;
   if (/^[A-Za-z]:/.test(normalized)) return null;
@@ -147,11 +152,16 @@ export function renderSarif(report: ScanReport, rules: readonly RuleMeta[]): str
   const artifacts: Array<Record<string, unknown>> = [];
   const artifactIndex = new Map<string, number>();
   for (const r of report.resources) {
-    const uri = repoRelativeUri(r.filePath);
+    const uri = repoRelativeUri(r.filePath, report.header.pathPrefix);
     if (uri === null) continue;
     artifactIndex.set(r.uri, artifacts.length);
     artifacts.push({
-      location: { uri, uriBaseId: '%SRCROOT%' },
+      // No uriBaseId. It was emitted as '%SRCROOT%' with no matching
+      // originalUriBaseIds entry, which makes it unresolvable per the SARIF
+      // spec, and code scanning's handling of a dangling base id is not
+      // dependable. A bare repository-relative URI is what GitHub documents
+      // and cannot be mis-resolved.
+      location: { uri },
       ...(r.byteLength !== undefined ? { length: r.byteLength } : {}),
       ...(r.mimeType ? { mimeType: esc(identText(r.mimeType)) } : {}),
       hashes: { 'sha-256': esc(identText(r.contentHash)) },
@@ -167,6 +177,7 @@ export function renderSarif(report: ScanReport, rules: readonly RuleMeta[]): str
       resource: byUri.get(f.resourceUri),
       artifactIndex: artifactIndex.get(f.resourceUri),
       failOn: header.failOn,
+      pathPrefix: header.pathPrefix,
     }),
   );
 
@@ -178,7 +189,10 @@ export function renderSarif(report: ScanReport, rules: readonly RuleMeta[]): str
         tool: {
           driver: {
             name: 'Panelint',
-            informationUri: 'https://github.com/panelint/panelint',
+            // GitHub code scanning renders this as the tool's information link,
+            // so a dead URL is user-visible in every consuming repository. It
+            // pointed at github.com/panelint/panelint, which does not exist.
+            informationUri: HOMEPAGE,
             version: esc(identText(header.panelintVersion)),
             semanticVersion: esc(identText(header.panelintVersion)),
             rules: sarifRules,
@@ -238,7 +252,7 @@ export function renderSarif(report: ScanReport, rules: readonly RuleMeta[]): str
             reason: esc(messageText(cause.reason)),
             count: cause.count,
           })),
-          resources: report.resources.map(toPropertyResource),
+          resources: report.resources.map((r) => toPropertyResource(r, header.pathPrefix)),
         },
       },
     ],
@@ -305,10 +319,11 @@ interface ResultContext {
   resource: ReportResource | undefined;
   artifactIndex: number | undefined;
   failOn: Severity;
+  pathPrefix: string | undefined;
 }
 
 function toResult(f: Finding, ctx: ResultContext) {
-  const uri = repoRelativeUri(ctx.resource?.filePath);
+  const uri = repoRelativeUri(ctx.resource?.filePath, ctx.pathPrefix);
 
   const logicalLocations = [
     {
@@ -322,9 +337,9 @@ function toResult(f: Finding, ctx: ResultContext) {
     uri !== null
       ? {
           physicalLocation: {
+            // No uriBaseId — see the artifacts block above.
             artifactLocation: {
               uri,
-              uriBaseId: '%SRCROOT%',
               ...(ctx.artifactIndex !== undefined ? { index: ctx.artifactIndex } : {}),
             },
             ...(f.location ? { region: toRegion(f) } : {}),
@@ -370,8 +385,8 @@ function toRegion(f: Finding) {
   };
 }
 
-function toPropertyResource(r: ReportResource) {
-  const uri = repoRelativeUri(r.filePath);
+function toPropertyResource(r: ReportResource, pathPrefix: string | undefined) {
+  const uri = repoRelativeUri(r.filePath, pathPrefix);
   return {
     uri: esc(identText(r.uri)),
     contentHash: esc(identText(r.contentHash)),

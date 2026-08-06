@@ -71,6 +71,12 @@ program
   .option('--experimental', 'include experimental rules (they never affect the exit code)', false)
   .option('--baseline <file>', 'a baseline file of accepted findings')
   .option('--config <file>', 'a config file (default: panelint.config.json)')
+  .option(
+    '--path-prefix <path>',
+    'prepend this to every file path in SARIF output. File paths are relative to the ' +
+      'scan root, but GitHub resolves SARIF paths against the repository root — set this ' +
+      'to the scan root when they differ, or alerts point at paths that do not exist.',
+  )
   .option('--no-color', 'disable coloured output')
   .option(
     '--trust-inline-suppressions',
@@ -93,6 +99,7 @@ async function runScan(
   const failOn = parseSeverity(String(opts['failOn'] ?? 'high'));
   const onError = parseOnError(String(opts['onError'] ?? 'fail'));
   const format = String(opts['format'] ?? 'text');
+  const pathPrefix = parsePathPrefix(opts['pathPrefix']);
   const limits = resolveLimits();
 
   // ── Acquire ────────────────────────────────────────────────────────────
@@ -171,6 +178,7 @@ async function runScan(
       suppressed: suppression.counts,
       ...(set.resolvedCount !== undefined ? { resolvedCount: set.resolvedCount } : {}),
       ...(set.declaredCount !== undefined ? { declaredCount: set.declaredCount } : {}),
+      ...(pathPrefix ? { pathPrefix } : {}),
     },
     resources: set.resources.map((r): ReportResource => ({
       uri: r.uri,
@@ -185,12 +193,19 @@ async function runScan(
     errors,
   };
 
-  process.stdout.write(renderReport(report, format, Boolean(opts['color'] ?? true)));
+  // `--no-color` sets opts.color to false; absent, it is undefined. Pass the
+  // undefined through rather than defaulting to true, so renderText falls back
+  // to shouldColor() and honours NO_COLOR, FORCE_COLOR, and whether stdout is a
+  // TTY. Collapsing this to a definite boolean here made that fallback
+  // unreachable, which put ANSI escapes into every redirected report file and
+  // into the GitHub Action's job summary.
+  const color = opts['color'] === false ? false : undefined;
+  process.stdout.write(renderReport(report, format, color));
 
   return selectExitCode(suppression.findings, errors, failOn, onError);
 }
 
-function renderReport(report: ScanReport, format: string, color: boolean): string {
+function renderReport(report: ScanReport, format: string, color: boolean | undefined): string {
   switch (format) {
     case 'json':
       return renderJson(report) + '\n';
@@ -347,6 +362,29 @@ function parseSeverity(value: string): Severity {
 
 function parseOnError(value: string): OnError {
   if (value !== 'fail' && value !== 'warn') throw new Error('--on-error must be fail or warn');
+  return value;
+}
+
+/**
+ * Normalize `--path-prefix` to a bare relative path, or refuse it.
+ *
+ * The value ends up prepended to SARIF `artifactLocation.uri`, which lands in
+ * someone's code scanning alerts. `repoRelativeUri` validates the joined path
+ * and would silently drop the location if the prefix were absolute or
+ * traversing — a finding rendered without source context, with no explanation.
+ * Failing here instead makes the mistake visible at the point it was made.
+ */
+function parsePathPrefix(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const value = String(raw).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+  if (value === '' || value === '.') return undefined;
+  if (value.startsWith('/') || /^[A-Za-z]:/.test(value) || value.startsWith('~')) {
+    throw new Error('--path-prefix must be a relative path inside the repository');
+  }
+  if (value.split('/').includes('..')) {
+    throw new Error('--path-prefix must not traverse upward');
+  }
+  if (value.includes('\0')) throw new Error('--path-prefix must not contain a null byte');
   return value;
 }
 

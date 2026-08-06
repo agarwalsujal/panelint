@@ -2,7 +2,18 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // The published tarball does not ship src/, so both map kinds point at
+    // paths that do not exist once installed — 264 files and 31% of the
+    // unpacked size, none of it resolvable. tsconfig.json keeps them on for
+    // local development, where src/ is right there.
+    //
+    // The alternative is to add src/ to package.json "files" and keep the maps
+    // working, which for a security tool has a real argument behind it: a user
+    // can read the scanner they are running. That doubles the package and the
+    // source is a click away in a public repo, so it is not the default.
+    "declarationMap": false,
+    "sourceMap": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["test/**/*", "scripts/**/*"]
