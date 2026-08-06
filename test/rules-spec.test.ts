@@ -640,6 +640,16 @@ describe('PANE-SPEC-010 — list-level and read-level _meta.ui diverge', () => {
     expect(paneSpec010.check(ctxFor({ metaFromList: list, metaFromRead: read })).findings.length).toBeGreaterThan(0);
   });
 
+  it('fires: an exact list host cannot cover a wildcard read source (probe-collision guard)', () => {
+    // A wildcard read source matches an unbounded set; a single exact host covers
+    // one name and can never cover it. This must fire even when the exact host
+    // equals the internal probe label — otherwise a server could silence the gate
+    // by planting `panelint-probe.<base>` in its advertised list CSP.
+    const list = { csp: { connectDomains: ['https://panelint-probe.api.example.com'] } };
+    const read = { csp: { connectDomains: ['https://*.api.example.com'] } };
+    expect(paneSpec010.check(ctxFor({ metaFromList: list, metaFromRead: read })).findings.length).toBeGreaterThan(0);
+  });
+
   it('fires when the read-level CSP adds an origin the list-level does not permit', () => {
     const read = JSON.parse(fixture('malicious/spec/read-broader-meta.json')) as UIResourceMeta;
     const list = { csp: { connectDomains: ['https://api.example.com'] } };

@@ -59,18 +59,27 @@ function arrayIsBroader(listVals: string[], readVals: string[]): boolean {
       const scheme = rp.scheme ?? 'https';
       const port = rp.port ? `:${rp.port}` : '';
       const path = rp.path ?? '/';
+      const readIsWildcard = rp.host.startsWith('*.');
       // For a leading-label wildcard, probe coverage with a representative host
       // the wildcard matches. If a list source covers `x.<base>`, it covers
       // every host `*.<base>` matches, since all of them end in `.<base>`. Without
       // this, a narrowing — list `*.example.com`, read `*.api.example.com` — was
       // declared "broader" and gate-failed a conformant server that tightened its
       // policy at read time. A non-wildcard host probes as itself (unchanged).
-      const probeHost = rp.host.startsWith('*.')
-        ? rp.host.replace(/^\*/, 'panelint-probe')
-        : rp.host;
+      const probeHost = readIsWildcard ? rp.host.replace(/^\*/, 'panelint-probe') : rp.host;
       try {
         const url = new URL(`${scheme}://${probeHost}${port}${path}`);
-        covered = listVals.some((l) => sourceCovers(parseSource(l), url));
+        covered = listVals.some((l) => {
+          const lp = parseSource(l);
+          // An exact host covers exactly one hostname; it can never cover a
+          // wildcard read source, which matches an unbounded set. Only a wildcard,
+          // scheme-only, or bare-wildcard list source can. Excluding exact hosts
+          // here closes the probe-host collision: otherwise a server could silence
+          // this gating finding by planting `panelint-probe.<base>` in its
+          // advertised list CSP while enforcing a broader `*.<base>` at read time.
+          if (readIsWildcard && lp.kind === 'host' && !lp.host?.startsWith('*.')) return false;
+          return sourceCovers(lp, url);
+        });
       } catch {
         covered = false;
       }
