@@ -85,7 +85,16 @@ const VOID_ELEMENTS = new Set([
 export function estimateNestingDepth(html: string, ceiling: number): { depth: number; exceeded: boolean } {
   let depth = 0;
   let max = 0;
-  const tagRe = /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>/g;
+  // The attribute body is bounded. Unbounded `[^>]*` before a required `>`
+  // rescans to end-of-string at every `<` when no `>` follows, and every one of
+  // those scans fails — clean O(n²) in the one function that runs BEFORE every
+  // other control, on raw attacker bytes, synchronously, with no deadline.
+  //
+  // Measured on `"<a".repeat(n)`: 100 KB → 2.3 s, 200 KB → 8.7 s, 400 KB → 38 s.
+  // At the 8 MB maxResourceBytes ceiling that is roughly four hours for a single
+  // resource, and the depth early-out never fires because no tag ever completes.
+  // A tag whose attributes exceed this bound is not a tag worth counting.
+  const tagRe = /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9-]*)([^>]{0,4096})>/g;
 
   let m: RegExpExecArray | null;
   while ((m = tagRe.exec(html)) !== null) {

@@ -64,7 +64,16 @@ export const paneHidden007 = defineRule({
     for (const node of commentNodes(ctx.dom)) {
       const raw = nodeData(node);
       if (PANELINT_SUPPRESSION.test(raw)) continue;
-      if (FRAMEWORK_MARKER.test(raw)) continue;
+      // Length-guard FRAMEWORK_MARKER. Its alternation has three adjacent
+      // whitespace-matching constructs, two of which match empty, so a comment
+      // of spaces that fails the final anchor makes the engine enumerate the
+      // splits: 1 000 spaces → 0.35 s, 4 000 → 15 s, 8 000 → 89 s. A 4 KB
+      // capture file bought 15 seconds of CPU, and comments are all processed
+      // inside this one check() with no deadline between them.
+      //
+      // Every real framework anchor — `$`, `/$`, `[`, `]`, `ko`, `v-if`,
+      // `teleport` — is a handful of characters. Anything longer is not one.
+      if (raw.length <= 512 && FRAMEWORK_MARKER.test(raw)) continue;
       if (CONDITIONAL.test(raw)) continue;
       if (LICENCE.test(raw)) continue;
 
