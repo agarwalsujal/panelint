@@ -64,6 +64,15 @@ inputs:
     description: Path to a baseline file of already-accepted findings.
     required: false
     default: ''
+  allow-repo-baseline:
+    description: >-
+      Honour a baseline file that lives inside the scanned tree. Off by default:
+      a baseline accepts findings, and every field it matches on is printed by
+      `--format json`, so a scanned repository could accept its own findings.
+      A baseline committed alongside the code is inside the checkout, so set this
+      when the baseline is operator-controlled (the usual case in CI).
+    required: false
+    default: 'false'
   experimental:
     description: >-
       Include experimental rules. They can never affect the exit code — the gate
@@ -118,7 +127,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
       with:
         node-version: ${{ inputs.node-version }}
 
@@ -159,11 +168,13 @@ runs:
         # in either is noise.
         NO_COLOR: '1'
         IN_PATH: ${{ inputs.path }}
+        IN_WORKDIR: ${{ inputs.working-directory }}
         IN_CAPTURE: ${{ inputs.capture }}
         IN_FAIL_ON: ${{ inputs.fail-on }}
         IN_ON_ERROR: ${{ inputs.on-error }}
         IN_CONFIG: ${{ inputs.config }}
         IN_BASELINE: ${{ inputs.baseline }}
+        IN_ALLOW_REPO_BASELINE: ${{ inputs.allow-repo-baseline }}
         IN_EXPERIMENTAL: ${{ inputs.experimental }}
         IN_SARIF: ${{ inputs.sarif-file }}
       run: |
@@ -187,9 +198,22 @@ runs:
           args+=("$IN_CAPTURE")
         else
           args+=("$IN_PATH")
-          # Only meaningful when the scan root is not the repository root.
-          if [ "$IN_PATH" != "." ]; then
-            args+=(--path-prefix "$IN_PATH")
+          # Paths in the SARIF are relative to the scan root; GitHub resolves them
+          # against the REPOSITORY root. The scan root, seen from the repo root, is
+          # working-directory joined with path — the step's `working-directory:`
+          # changes the CWD the scan runs from, but `--path-prefix` never saw it.
+          # Fold both in, dropping "." and empty segments, or a monorepo scan
+          # (working-directory: packages/app, path: .) emits alerts on paths that
+          # do not exist at the repo root and code scanning silently drops them.
+          prefix=""
+          for seg in "${IN_WORKDIR:-.}" "$IN_PATH"; do
+            seg="${seg#./}"; seg="${seg%/}"
+            if [ -n "$seg" ] && [ "$seg" != "." ]; then
+              prefix="${prefix:+$prefix/}$seg"
+            fi
+          done
+          if [ -n "$prefix" ]; then
+            args+=(--path-prefix "$prefix")
           fi
         fi
 
@@ -201,7 +225,14 @@ runs:
         # CRITICAL to exit 0 before this was passed.
         args+=(--no-inline-suppressions)
         if [ -n "$IN_CONFIG" ]; then args+=(--config "$IN_CONFIG"); fi
-        if [ -n "$IN_BASELINE" ]; then args+=(--baseline "$IN_BASELINE"); fi
+        if [ -n "$IN_BASELINE" ]; then
+          args+=(--baseline "$IN_BASELINE")
+          # A committed baseline lives inside the checkout, which panelint refuses
+          # by default (a scanned tree must not accept its own findings). In CI the
+          # baseline is operator-controlled, so honour it when opted in — otherwise
+          # the baseline input fails the job with exit 2 on every run.
+          if [ "${IN_ALLOW_REPO_BASELINE:-false}" = "true" ]; then args+=(--allow-repo-baseline); fi
+        fi
         if [ "$IN_EXPERIMENTAL" = "true" ]; then args+=(--experimental); fi
 
         # The human-readable run. This one owns the exit code.
@@ -238,7 +269,7 @@ runs:
     # never reach the Security tab on exactly the runs where findings exist.
     - name: Upload SARIF
       if: ${{ always() && inputs.upload-sarif == 'true' }}
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3
       with:
         sarif_file: ${{ inputs.working-directory }}/${{ inputs.sarif-file }}
         category: ${{ inputs.category }}

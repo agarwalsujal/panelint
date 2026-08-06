@@ -50,6 +50,7 @@ function ctxFor(html: string, meta: UIResourceMeta | null = null): RuleContext {
     schemaErrors: [],
     scripts: collectScripts(dom, html, limits),
     rawSource: html,
+    tools: [],
     options: {},
     limits,
     diagnostic: () => {},

@@ -49,6 +49,7 @@ function ctxFor(html: string, uri = 'ui://redos/view'): RuleContext {
     schemaErrors: [],
     scripts,
     rawSource: html,
+    tools: [],
     options: {},
     limits,
     diagnostic() {

@@ -49,6 +49,7 @@ import { selectorSpecificity } from '@csstools/selector-specificity';
 import { is as cssIs } from 'css-select';
 import { Element, type Document, type AnyNode } from 'domhandler';
 import { allElements, attr, attrLocations, selectAll } from './html.js';
+import { selectorIsTractable } from '../safe/guard.js';
 import { checkLimit, Budget } from '../limits.js';
 import type { DeclaredValue, Limits, ScanDiagnostic, SourceLocation, StyleIndexLike } from '../types.js';
 
@@ -64,6 +65,28 @@ import type { DeclaredValue, Limits, ScanDiagnostic, SourceLocation, StyleIndexL
  * interacts with layers, so it is not modelled.
  */
 const UNMODELLED_AT_RULES = new Set(['layer', 'scope', 'container', 'supports']);
+
+/**
+ * Pseudo-classes css-select answers, and answers DIFFERENTLY from a browser.
+ *
+ * The dangerous case is not the selector that throws — a throw is caught and
+ * reported. It is the selector css-select evaluates confidently and gets wrong,
+ * because nothing anywhere signals a problem.
+ *
+ * `:read-write` is the measured one. Selectors 4 defines it as matching any
+ * element that is user-alterable, so a plain `<input>` with neither `readonly`
+ * nor `disabled` matches in every browser. css-select returns false. That makes
+ *
+ *     <style>.s:read-write{opacity:0}</style>
+ *     <input class="s" autocomplete="cc-number">
+ *
+ * a hidden autofill target that binds no declaration at all — PANE-INPUT-001
+ * (CRITICAL, gate-eligible) never fires, exit 0, and unlike the `:defined`
+ * case there is no exception to catch.
+ *
+ * A selector using one of these is treated as unevaluable rather than trusted.
+ */
+const MISMODELLED_PSEUDO = new Set(['read-write', 'read-only']);
 
 /** Pseudo-classes describing a transient state, not the resting render. */
 const STATEFUL_PSEUDO = new Set([
@@ -101,6 +124,8 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
   const diagnostics: ScanDiagnostic[] = [];
   const rules: StyleRule[] = [];
   const undecidedReasonSet = new Set<string>();
+  /** Selectors postcss-selector-parser could not parse. Surfaced in stage 3. */
+  const unparsedSelectors: Array<{ selector: string; why: string }> = [];
   let order = 0;
   let truncated = false;
 
@@ -127,7 +152,7 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
 
     const baseLine = styleEl.sourceCodeLocation?.startTag?.endLine ?? 1;
 
-    walkRules(root, [], (rule, atRuleStack) => {
+    walkRules(root, [], (rule, atRuleStack, composedSelector) => {
       if (truncated) return;
       if (rules.length >= limits.maxCssRules) {
         if (!truncated) {
@@ -160,8 +185,20 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
       if (decls.length === 0) return;
 
       // ── Stage 2: classify ────────────────────────────────────────────────
-      for (const single of splitSelectorList(rule.selector)) {
+      // The COMPOSED selector, not `rule.selector` — for a nested rule those
+      // differ, and using the raw one binds `.s` where the sheet said `body .s`.
+      for (const single of splitSelectorList(composedSelector)) {
         const classified = classifySelector(single);
+        // A selector that failed to PARSE is not a selector that does not
+        // apply. Stage 3 never sees it, so it is recorded here or nowhere.
+        if (classified.failed) {
+          unparsedSelectors.push({
+            selector: single,
+            why: classified.mismodelled
+              ? `css-select models :${classified.mismodelled} differently from a browser`
+              : 'the selector parser could not read it',
+          });
+        }
         if (!classified.applies) continue;
         rules.push({
           selector: single,
@@ -180,16 +217,74 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
   const byNode = new Map<Element, DeclaredValue[]>();
   const undecidedNodes = new Set<Element>();
   const elements = allElements(dom);
+  const sizes = subtreeSizes(elements);
+  let maxSubtree = 1;
+  for (const s of sizes.values()) if (s > maxSubtree) maxSubtree = s;
+
+  /**
+   * Every declaration this selector carries is now missing from
+   * `candidatesFor`, and no cheap analysis says which nodes it would have
+   * matched. Per this file's doctrine a cascade gap must cost a missed
+   * detection rather than a targeted evasion, so the whole document goes
+   * undecided rather than silently reading as "no such declaration".
+   */
+  function skipSelector(selector: string, why: string): void {
+    for (const el of elements) undecidedNodes.add(el);
+    undecidedReasonSet.add(
+      `a selector was not matched (${why}), so declarations it carries are absent from the cascade`,
+    );
+    diagnostics.push({
+      code: 'SELECTOR_SKIPPED',
+      message: `Selector skipped (${why}); CSS-dependent rules see an incomplete cascade.`,
+      ...(resourceUri ? { resourceUri } : {}),
+      detail:
+        `Selector: ${selector.slice(0, 120)}${selector.length > 120 ? '…' : ''}. ` +
+        'Every node is marked undecided, because which nodes it would have matched is unknown.',
+    });
+  }
+
+  // Stage 2 could not report these: `elements` did not exist yet.
+  for (const { selector, why } of unparsedSelectors) skipSelector(selector, why);
 
   for (const rule of rules) {
+    // `selectorIsTractable` shipped from 0.1.0 with ZERO call sites. It is the
+    // gate for `:not(:not(…))`-style selectors that are cheap to write and blow
+    // the stack inside css-select while compiling — one rule, one selector, so
+    // neither the CSS-rule cap nor the node count ever sees them.
+    if (!selectorIsTractable(rule.matchSelector)) {
+      skipSelector(rule.matchSelector, 'too long or too deeply nested to compile safely');
+      continue;
+    }
+
+    // ── The cost model ────────────────────────────────────────────────────
+    // Refused BEFORE the first call, not billed after it: one `cssIs` call on
+    // the measured bomb took 12.7 s on its own, so nothing checked between
+    // calls can bound this.
+    const hasDepth = hasDescendantDepth(rule.matchSelector);
+    if (hasDepth > 0) {
+      const worst = selectorCost(maxSubtree, hasDepth) * Math.max(1, elements.length);
+      if (worst > limits.selectorMatchBudget) {
+        skipSelector(
+          rule.matchSelector,
+          `matching it against this document could cost ~${worst.toExponential(1)} units, over the ` +
+            'selector-match budget',
+        );
+        continue;
+      }
+    }
+
+    let threw = false;
     for (const el of elements) {
-      budget.spend();
+      budget.spend(selectorCost(sizes.get(el) ?? 1, hasDepth));
       if (budget.exhausted) break;
       let matches = false;
       try {
         matches = cssIs(el as AnyNode, rule.matchSelector);
       } catch {
-        // An unsupported selector is skipped, never fatal.
+        // An unsupported selector is skipped, never fatal — but never silently
+        // either. Swallowing this made unmodellable CSS read as no CSS, which
+        // is the benign-looking direction and the one an attacker chooses.
+        threw = true;
         break;
       }
       if (!matches) continue;
@@ -210,12 +305,23 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
       }
       byNode.set(el, bucket);
     }
+
+    if (threw) skipSelector(rule.matchSelector, 'css-select could not evaluate it');
     if (budget.exhausted) break;
   }
 
   if (budget.exhausted) {
     const d = checkLimit('selectorMatchBudget', budget.used, limits, resourceUri);
     if (d) diagnostics.push(d);
+    // The budget stopping the match loop leaves every remaining rule unmatched.
+    // Without this the index reports a complete cascade built from a prefix of
+    // the stylesheet, which is a rule-suppression primitive: an attacker front-
+    // loads expensive selectors and the declaration that would have been found
+    // is simply never looked at.
+    for (const el of elements) undecidedNodes.add(el);
+    undecidedReasonSet.add(
+      'the selector-match budget was exhausted, so an unknown suffix of the stylesheet never matched',
+    );
   }
 
   // Inline style= attributes. Highest origin precedence, always applying.
@@ -226,7 +332,49 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
     try {
       root = postcss.parse(`*{${inline}}`);
     } catch {
-      continue;
+      // ── Why this is not a `continue` ──────────────────────────────────────
+      // CSS Syntax 3 §4.3.2 ends an unterminated comment at EOF, and an
+      // unterminated string at EOF is a parse error that still returns the
+      // string token — so a browser APPLIES the declarations that precede the
+      // break. postcss throws instead, and swallowing that made
+      //
+      //     <input autocomplete="cc-number" style="opacity:0;/*">
+      //
+      // read as an element with no inline style at all: PANE-INPUT-001
+      // (CRITICAL, gate-eligible) did not fire, exit 0, no diagnostic.
+      //
+      // Recovery re-parses the prefix up to the last complete declaration,
+      // which is what the browser keeps. Binding those is widening, and
+      // widening is safe here by this module's design: `candidatesFor` is
+      // additive, so a recovered declaration can raise a finding and can never
+      // suppress one. The node is marked undecided either way, because what
+      // follows the break was not modelled.
+      const cut = inline.lastIndexOf(';');
+      let recovered: Root | null = null;
+      if (cut > 0) {
+        try {
+          recovered = postcss.parse(`*{${inline.slice(0, cut)}}`);
+        } catch {
+          recovered = null;
+        }
+      }
+
+      undecidedNodes.add(el);
+      undecidedReasonSet.add(
+        'an inline `style=` attribute could not be fully parsed, so declarations after the ' +
+          'break are absent from the cascade',
+      );
+      diagnostics.push({
+        code: 'PARSE_FAILED',
+        message: recovered
+          ? 'An inline `style=` attribute was truncated by a parse error; the declarations before ' +
+            'it were recovered and the node is undecided.'
+          : 'An inline `style=` attribute could not be parsed; the node is undecided.',
+        ...(resourceUri ? { resourceUri } : {}),
+      });
+
+      if (!recovered) continue;
+      root = recovered;
     }
     const loc = attrLocations(el)?.['style'];
     const bucket = byNode.get(el) ?? [];
@@ -285,6 +433,109 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
   };
 }
 
+/**
+ * What one `is()` call against this selector can cost, in budget units.
+ *
+ * `Budget` is a count of calls, and the cost model behind `selectorMatchBudget`
+ * assumed every call costs the same. `:has()` breaks that assumption by a
+ * factor of the document size: css-select re-enters the matcher over the
+ * candidate's entire subtree, so one call can do as much work as a whole
+ * ordinary rule. A combinator is milder — it walks ancestors or previous
+ * siblings — and is charged linearly.
+ *
+ * The charge is a worst case. The real cost of a `:has()` call is the size of
+ * that node's subtree, which is only knowable after walking it, and a budget
+ * that bills after the fact does not bound anything.
+ */
+export function hasDescendantDepth(selector: string): number {
+  // The argument of every `:has()`, at any nesting depth, including when it is
+  // wrapped in `:not()` / `:is()` / `:where()` — measured, a wrapper does not
+  // reduce the cost at all.
+  let worst = 0;
+  let i = selector.indexOf(':has(');
+  while (i !== -1) {
+    let depth = 0;
+    let j = i + ':has('.length;
+    const start = j;
+    for (; j < selector.length; j++) {
+      const ch = selector[j];
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        if (depth === 0) break;
+        depth--;
+      }
+    }
+    const arg = selector.slice(start, j);
+    // Only DESCENDANT combinators are superlinear. Measured on a 300-deep
+    // chain: `div:has(div div div span)` 3628 ms, `div:has(> div span)` 5 ms,
+    // `div:has(div > span)` 3 ms. Child and sibling combinators are cheap.
+    const stripped = arg.replace(/\s*[>+~]\s*/g, '');
+    const descendants = stripped.trim().match(/\s+/g)?.length ?? 0;
+    if (descendants > worst) worst = descendants;
+    i = selector.indexOf(':has(', i + 1);
+  }
+  return worst;
+}
+
+/**
+ * What one `is()` call against this selector can cost, in budget units.
+ *
+ * `Budget` counted CALLS, and a call is not a unit of work. The first version
+ * of this function charged `1 + hasCount x N`, which is ADDITIVE where the
+ * measured cost is MULTIPLICATIVE — so it never tripped. Measured against a
+ * 490-deep `<div>` chain, one CSS rule, `div:has(div div div span)`:
+ *
+ *   before this model   45,555 ms, zero diagnostics, exit 0
+ *
+ * Growth is ~O(subtree^(1+d)) where d is the number of descendant combinators
+ * inside the `:has()`. One single `cssIs` call in that document took 12.7 s, so
+ * a cooperative deadline checked between calls cannot bound it either — the
+ * charge has to be computed and refused BEFORE the call.
+ *
+ * The charge uses this node's real subtree size rather than the document size,
+ * which is what keeps ordinary markup from being skipped: on real HTML the sum
+ * of subtree sizes is about `N x average depth`, so `.card:has(.badge)` over
+ * 20,000 nodes costs ~300k units against a 5,000,000 ceiling and matches
+ * normally.
+ */
+export function selectorCost(subtreeSize: number, hasDepth: number): number {
+  const base = Math.max(1, subtreeSize);
+  if (hasDepth === 0 && base === 1) return 1;
+  const raw = Math.pow(base, 1 + hasDepth);
+  // Saturate. A 490-node subtree with three descendant combinators is 5.7e10,
+  // and an Infinity or a precision loss here would silently disable the bound.
+  return Number.isFinite(raw) ? Math.min(raw, Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * Subtree size per element, in one O(N) pass.
+ *
+ * `allElements` yields document order, in which a node always precedes its
+ * descendants, so iterating in REVERSE guarantees every child is already
+ * computed when its parent is reached.
+ */
+function subtreeSizes(elements: Element[]): Map<Element, number> {
+  const size = new Map<Element, number>();
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i]!;
+    let total = 1;
+    const stack: AnyNode[] = [...(el.children ?? [])];
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      if (node instanceof Element) {
+        total += size.get(node) ?? 1;
+      } else {
+        // A `<template>`'s content hangs off a `root` node, which is not an
+        // Element. Descend through it so template content is counted.
+        const kids = (node as { children?: AnyNode[] }).children;
+        if (kids) stack.push(...kids);
+      }
+    }
+    size.set(el, total);
+  }
+  return size;
+}
+
 // ---------------------------------------------------------------------------
 // Resolution
 // ---------------------------------------------------------------------------
@@ -323,17 +574,49 @@ function wins(a: DeclaredValue, b: DeclaredValue): boolean {
 // Collection and classification helpers
 // ---------------------------------------------------------------------------
 
+type RuleVisitor = (rule: PostcssRule, atRuleStack: string[], selector: string) => void;
+
+/**
+ * Compose a nested selector against its parent.
+ *
+ * CSS Nesting has shipped in Chrome, Safari and Firefox since 2023, and this
+ * walker did not descend into it at all: `rule.each` at the collection site
+ * only looks at `decl` children, and `walkRules` recursed into at-rules only.
+ * So `body { .s { opacity: 0 } }` bound nothing, produced no diagnostic, and
+ * every CSS-dependent rule read the document as carrying no such declaration —
+ * a one-line, entirely silent bypass of the PANE-HIDDEN and PANE-INPUT
+ * families.
+ *
+ * `&` is substituted where present; otherwise the relationship is descendant.
+ * A parent that is a selector LIST is wrapped in `:is()` so the composition
+ * cannot change which nodes match.
+ */
+function composeNested(parent: string, child: string): string {
+  const safeParent = parent.includes(',') ? `:is(${parent})` : parent;
+  if (child.includes('&')) return child.replace(/&/g, safeParent);
+  return `${safeParent} ${child}`;
+}
+
 function walkRules(
-  container: Root | AtRule,
+  container: Root | AtRule | PostcssRule,
   atRuleStack: string[],
-  visit: (rule: PostcssRule, atRuleStack: string[]) => void,
+  visit: RuleVisitor,
+  parentSelector: string | null = null,
 ): void {
   container.each((node) => {
     if (node.type === 'rule') {
-      visit(node as PostcssRule, atRuleStack);
+      const rule = node as PostcssRule;
+      const selector =
+        parentSelector === null
+          ? rule.selector
+          : composeNested(parentSelector, rule.selector);
+      visit(rule, atRuleStack, selector);
+      // Descend. A nested rule is a `rule` child of a `rule`, which is exactly
+      // what this walker used to drop on the floor.
+      walkRules(rule, atRuleStack, visit, selector);
     } else if (node.type === 'atrule') {
       const at = node as AtRule;
-      visit_atrule(at, atRuleStack, visit);
+      visit_atrule(at, atRuleStack, visit, parentSelector);
     }
   });
 }
@@ -341,14 +624,15 @@ function walkRules(
 function visit_atrule(
   at: AtRule,
   atRuleStack: string[],
-  visit: (rule: PostcssRule, atRuleStack: string[]) => void,
+  visit: RuleVisitor,
+  parentSelector: string | null,
 ): void {
   const name = at.name.toLowerCase();
   // `@layer a, b;` with no body only declares order. It still means layers are
   // in play, so any rule in this sheet may be reordered — but we can only mark
   // the nodes we actually bind, so the marker rides on the rules inside layers.
   if (!at.nodes) return;
-  walkRules(at, [...atRuleStack, name], visit);
+  walkRules(at, [...atRuleStack, name], visit, parentSelector);
 }
 
 function declLocation(d: Declaration, baseLine: number): SourceLocation | undefined {
@@ -395,6 +679,18 @@ interface Classified {
   applies: boolean;
   matchSelector: string;
   specificity: { a: number; b: number; c: number };
+  /**
+   * True when the selector could not be PARSED, as opposed to parsing fine and
+   * legitimately not applying at rest.
+   *
+   * Both used to return `applies: false` and stage 2 dropped them identically,
+   * so a selector the parser choked on was indistinguishable from a
+   * `::before`. That made unmodellable CSS read as no CSS — which is the
+   * benign-looking direction, and therefore the one an attacker picks.
+   */
+  failed?: boolean;
+  /** The pseudo-class css-select models differently from a browser, if any. */
+  mismodelled?: string;
 }
 
 /**
@@ -482,6 +778,7 @@ function allStateful(negation: ParserNode): boolean {
 function classifySelector(selector: string): Classified {
   let applies = true;
   let matchSelector = selector;
+  let mismodelled: string | null = null;
 
   try {
     const processed = selectorParser((root) => {
@@ -493,6 +790,12 @@ function classifySelector(selector: string): Classified {
           const name = node.value.replace(/^::?/, '').toLowerCase();
           if (node.value.startsWith('::')) {
             applies = false;
+            return;
+          }
+          // css-select answers this one, and answers it wrong. Trusting the
+          // answer is the silent-pass direction, so the selector is unevaluable.
+          if (MISMODELLED_PSEUDO.has(name)) {
+            mismodelled = name;
             return;
           }
           if (STATEFUL_PSEUDO.has(name)) {
@@ -531,8 +834,14 @@ function classifySelector(selector: string): Classified {
     }).processSync(selector);
     matchSelector = processed;
   } catch {
-    // An unsupported selector is skipped, never fatal.
-    return { applies: false, matchSelector: selector, specificity: { a: 0, b: 0, c: 0 } };
+    // An unsupported selector is skipped, never fatal — but the caller has to
+    // be able to tell this from a selector that parsed and does not apply.
+    return {
+      applies: false,
+      failed: true,
+      matchSelector: selector,
+      specificity: { a: 0, b: 0, c: 0 },
+    };
   }
 
   let specificity = { a: 0, b: 0, c: 0 };
@@ -544,5 +853,8 @@ function classifySelector(selector: string): Classified {
     /* keep the zero specificity */
   }
 
+  if (mismodelled !== null) {
+    return { applies: false, failed: true, mismodelled, matchSelector, specificity };
+  }
   return { applies, matchSelector, specificity };
 }

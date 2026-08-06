@@ -12,7 +12,7 @@
  * `readOnlyHint: true`.
  */
 
-import type { Finding, RuleContext, RuleResult, ToolWithUIMeta } from '../../types.js';
+import type { Finding, RuleContext, RuleResult } from '../../types.js';
 import { defineRule, makeFinding } from '../shared/helpers.js';
 
 const REMEDIATION =
@@ -20,11 +20,6 @@ const REMEDIATION =
   'intentional and document it. If the tool is actually read-only, declare `readOnlyHint: true`.';
 
 const DESTRUCTIVE_VERB = /^(delete|remove|destroy|drop|purge|revoke|terminate|cancel|wipe|clear|uninstall|disable)_/i;
-
-function toolsOf(ctx: RuleContext): ToolWithUIMeta[] {
-  const tools = ctx.options['tools'];
-  return Array.isArray(tools) ? (tools as ToolWithUIMeta[]) : [];
-}
 
 export const context010 = defineRule({
   id: 'PANE-CONTEXT-010',
@@ -43,7 +38,7 @@ export const context010 = defineRule({
     const findings: Finding[] = [];
     let n = 0;
 
-    for (const tool of toolsOf(ctx)) {
+    for (const tool of ctx.tools) {
       if (tool.meta?.resourceUri !== ctx.resource.uri) continue;
       if (tool.annotations?.readOnlyHint === true) continue;
 

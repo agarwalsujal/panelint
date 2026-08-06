@@ -309,7 +309,58 @@ describe('acquireStdio — a conformant server', () => {
 
   it('follows pagination across pages', async () => {
     const set = await scan('paged');
-    expect(set.resources.map((r) => r.uri).sort()).toEqual(['ui://stub/one', 'ui://stub/two']);
+    // `ui://stub/main` is not in either listing page, but `render_stub`
+    // references it. The spec permits that omission, so it is read anyway.
+    expect(set.resources.map((r) => r.uri).sort()).toEqual([
+      'ui://stub/main',
+      'ui://stub/one',
+      'ui://stub/two',
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4b. Resources a tool references but `resources/list` omits
+// ---------------------------------------------------------------------------
+
+/**
+ * apps.mdx L395 explicitly permits a server to serve a tool-referenced app
+ * resource without listing it in `resources/list`. Panelint 0.1.0-0.1.3 read
+ * only the listing, so every server of that shape scanned as
+ * NO_RESOURCES_FOUND at exit 0 — a whole sanctioned class reported clean
+ * without a single rule running, and a silent pass an attacker can choose by
+ * simply not listing the resource carrying the payload.
+ */
+describe('tool-referenced resources absent from resources/list', () => {
+  it('reads a resource only a tool references', async () => {
+    const set = await scan('paged');
+    const main = set.resources.find((r) => r.uri === 'ui://stub/main');
+    expect(main).toBeDefined();
+    expect(main!.content).not.toBe('');
+  });
+
+  it('records how each resource was discovered', async () => {
+    const set = await scan('paged');
+    const via = Object.fromEntries(set.resources.map((r) => [r.uri, r.discoveredVia]));
+    expect(via['ui://stub/main']).toBe('tool-reference');
+    expect(via['ui://stub/one']).toBe('list');
+    expect(via['ui://stub/two']).toBe('list');
+  });
+
+  it('says so in a diagnostic rather than reading it silently', async () => {
+    const set = await scan('paged');
+    const d = set.diagnostics.find((x) => x.code === 'UNLISTED_RESOURCE');
+    expect(d).toBeDefined();
+    expect(d!.message).toMatch(/absent from/i);
+  });
+
+  it('does not double-read a resource that is both listed and referenced', async () => {
+    // In the default mode `ui://stub/main` IS listed and IS tool-referenced.
+    const set = await scan('ok');
+    const mains = set.resources.filter((r) => r.uri === 'ui://stub/main');
+    expect(mains).toHaveLength(1);
+    expect(mains[0]!.discoveredVia).toBe('list');
+    expect(set.diagnostics.some((x) => x.code === 'UNLISTED_RESOURCE')).toBe(false);
   });
 });
 
@@ -397,7 +448,10 @@ describe('pagination is bounded two independent ways', () => {
     const set = await scan('endless-cursor', { maxPages: 4 });
     const d = set.diagnostics.find((x) => /page cap/.test(x.message));
     expect(d?.code).toBe('LIMIT_EXCEEDED');
-    expect(set.resources.length).toBeLessThanOrEqual(4);
+    // The cap bounds LISTED resources. `ui://stub/main` is reached through the
+    // tool list, which `paginate` bounds by the same page cap independently.
+    expect(set.resources.filter((r) => r.discoveredVia === 'list')).toHaveLength(4);
+    expect(set.resources.length).toBeLessThanOrEqual(5);
   });
 
   it('stops when a cursor repeats', async () => {

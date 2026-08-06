@@ -19,9 +19,24 @@
  * `baseUriDomains` still matters, and it is why this rule declares `meta`: the
  * spec's CSP construction sets `base-uri {baseUriDomains | 'self'}`, so a
  * declared entry covering the origin means a conforming host would permit this
- * `<base>` rather than block it. That changes the message, not the severity —
- * Panelint reports properties of the content, and host enforcement is out of
- * scope per non-goal N2.
+ * `<base>` rather than block it.
+ *
+ * ── Second correction: the declared case must not gate ──────────────────────
+ * An earlier revision of this header concluded that a declared origin "changes
+ * the message, not the severity". That was wrong, and it reintroduced the bug
+ * the first correction fixed, one layer in.
+ *
+ * Declaring an origin in `baseUriDomains` and then pointing `<base href>` at it
+ * is the mechanism working exactly as the spec designs it. At the default
+ * `--fail-on high`, a HIGH/CERTAIN RISK finding gates, so the rule as written
+ * failed the build of a server that used the sanctioned feature in the
+ * sanctioned way — a gate-eligible finding on conformant markup, which
+ * GOALS.md G2 calls non-negotiable and DESIGN.md §6 calls the highest-severity
+ * bug this project has.
+ *
+ * The finding is still emitted: the element IS in the resource, and an operator
+ * reviewing what repoints their relative URLs should see it. It is emitted at
+ * LOW, below the default gate. An UNDECLARED origin is unchanged at HIGH.
  */
 
 import type { RuleContext, RuleResult } from '../../types.js';
@@ -68,6 +83,10 @@ export const exfil006 = defineRule({
         makeFinding({
           ctx,
           rule: exfil006,
+          // The declared case is the spec's own mechanism used as designed, so
+          // it must sit below the default `--fail-on high` gate. The undeclared
+          // case keeps the rule's declared HIGH.
+          ...(permitted ? { severity: 'LOW' as const } : {}),
           message:
             '`<base href>` points off-document, so every relative URL in this app — form actions, ' +
             'subresource URLs, links — resolves against that origin instead. ' +

@@ -242,11 +242,17 @@ describe('the scan step survives a non-zero panelint exit', () => {
           GITHUB_OUTPUT: outputs,
           NO_COLOR: '1',
           IN_PATH: '.',
+          // The step body runs under `set -u`, so every variable the Scan
+          // step's `env:` declares has to be present here too. A new input
+          // that is added to action.yml and not to this list fails as an
+          // unbound variable rather than as a missing flag.
+          IN_WORKDIR: '.',
           IN_CAPTURE: '',
           IN_FAIL_ON: 'high',
           IN_ON_ERROR: 'fail',
           IN_CONFIG: '',
           IN_BASELINE: '',
+          IN_ALLOW_REPO_BASELINE: 'false',
           IN_EXPERIMENTAL: 'false',
           IN_SARIF: 'panelint.sarif',
         },
@@ -308,5 +314,85 @@ describe('the pinned version', () => {
     const block = action.slice(action.indexOf('  version:'));
     const dflt = /default:\s*'([^']+)'/.exec(block)?.[1];
     expect(dflt).toBe(pkg.version);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. The scan step composes the right flags — path-prefix folds
+//    working-directory, and an in-tree baseline is opted into explicitly.
+// ---------------------------------------------------------------------------
+
+describe('the scan step composes flags from its inputs', () => {
+  // Run the real scan-step body with a stub `panelint` that records the argv it
+  // was invoked with, so we assert on flags the action actually passes rather
+  // than on YAML text.
+  function argvFor(env: Record<string, string>): string[] {
+    const work = mkdtempSync(join(tmpdir(), 'panelint-action-args-'));
+    try {
+      const argsFile = join(work, 'argv.txt');
+      const bin = join(work, 'panelint');
+      // Record argv (one invocation per line), emit benign output, exit clean so
+      // the step's own control flow is exercised without gating.
+      writeFileSync(bin, `#!/bin/bash\nprintf '%s\\n' "$*" >> "${argsFile}"\necho '{}'\nexit 0\n`);
+      chmodSync(bin, 0o755);
+      const script = join(work, 'step.sh');
+      writeFileSync(script, runBodyAfter('id: scan'));
+      const res = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', script], {
+        cwd: work,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          PATH: `${work}:${process.env['PATH'] ?? ''}`,
+          GITHUB_OUTPUT: join(work, 'outputs.txt'),
+          NO_COLOR: '1',
+          IN_PATH: '.',
+          IN_WORKDIR: '.',
+          IN_CAPTURE: '',
+          IN_FAIL_ON: 'high',
+          IN_ON_ERROR: 'fail',
+          IN_CONFIG: '',
+          IN_BASELINE: '',
+          IN_ALLOW_REPO_BASELINE: 'false',
+          IN_EXPERIMENTAL: 'false',
+          IN_SARIF: 'panelint.sarif',
+          ...env,
+        },
+      });
+      expect(res.status, `step exited ${res.status}\n${res.stderr}`).toBe(0);
+      writeFileSync(join(work, 'outputs.txt'), '');
+      return readFileSync(argsFile, 'utf8').trim().split('\n');
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  }
+
+  it('adds no --path-prefix when the scan root IS the repo root', () => {
+    const first = argvFor({ IN_WORKDIR: '.', IN_PATH: '.' })[0] ?? '';
+    expect(first).not.toContain('--path-prefix');
+  });
+
+  it('folds working-directory into --path-prefix for a monorepo scan', () => {
+    // working-directory: packages/server, path: . — the SARIF paths must resolve
+    // from the repo root, not from packages/server, or code scanning drops them.
+    const first = argvFor({ IN_WORKDIR: 'packages/server', IN_PATH: '.' })[0] ?? '';
+    expect(first).toContain('--path-prefix packages/server');
+  });
+
+  it('joins working-directory and path when both are non-trivial', () => {
+    const first = argvFor({ IN_WORKDIR: 'packages/server', IN_PATH: 'ui' })[0] ?? '';
+    expect(first).toContain('--path-prefix packages/server/ui');
+  });
+
+  it('passes --baseline but NOT --allow-repo-baseline by default', () => {
+    const first = argvFor({ IN_BASELINE: 'baseline.json' })[0] ?? '';
+    expect(first).toContain('--baseline baseline.json');
+    expect(first).not.toContain('--allow-repo-baseline');
+  });
+
+  it('adds --allow-repo-baseline only when explicitly opted in', () => {
+    const first = argvFor({ IN_BASELINE: 'baseline.json', IN_ALLOW_REPO_BASELINE: 'true' })[0] ?? '';
+    expect(first).toContain('--baseline baseline.json');
+    expect(first).toContain('--allow-repo-baseline');
   });
 });

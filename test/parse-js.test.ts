@@ -195,3 +195,56 @@ describe('findMessageListeners — the victim-side handler', () => {
     expect(findMessageListeners(s)[0]!.weakOriginChecks).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sloppy-mode inline scripts
+// ---------------------------------------------------------------------------
+
+/**
+ * An inline `<script>` body is CLASSIC, sloppy-mode code.
+ *
+ * 0.1.3 parsed every script with `sourceType: 'module'`, which is strict mode,
+ * so constructs every browser executes became syntax errors. A syntax error
+ * sets `ast: null`, and every AST rule reads that as "no script here" — so a
+ * single prefix took a hostile script from PANE-MSG-001 + PANE-DOM-001 (both
+ * HIGH, both gate-eligible) to a clean exit 0. The prefix costs the attacker
+ * one line and changes nothing about what the browser runs.
+ */
+describe('classic scripts parse in sloppy mode', () => {
+  const payload = 'window.addEventListener("message",function(e){document.body.innerHTML=e.data});';
+
+  const sloppy: Array<[string, string]> = [
+    ['a with statement', 'with(window){var z=1;}'],
+    ['a legacy octal literal', 'var n = 0755;'],
+    ['an HTML-like comment', '<!-- legacy\n'],
+    ['duplicate parameter names', 'function f(a,a){}'],
+    ['delete on a local binding', 'var q=1; delete q;'],
+    ['a future-reserved word as an identifier', 'var interface = 1;'],
+  ];
+
+  for (const [what, prefix] of sloppy) {
+    it(`still yields an AST with ${what}`, () => {
+      const html = `<!doctype html><html><body><script>${prefix}${payload}</script></body></html>`;
+      const { dom } = parseHtml(html, DEFAULT_LIMITS);
+      const scripts = collectScripts(dom, html, DEFAULT_LIMITS);
+      expect(scripts).toHaveLength(1);
+      expect(scripts[0]!.ast, `${what} blanked the script`).not.toBeNull();
+      expect(scripts[0]!.parseError).toBeUndefined();
+    });
+  }
+
+  it('still parses a real module, which is what the fallback is for', () => {
+    const html = `<!doctype html><html><body><script type="module">import x from "y"; ${payload}</script></body></html>`;
+    const { dom } = parseHtml(html, DEFAULT_LIMITS);
+    const scripts = collectScripts(dom, html, DEFAULT_LIMITS);
+    expect(scripts[0]!.ast).not.toBeNull();
+  });
+
+  it('still reports a genuinely broken script as unparsed', () => {
+    const html = '<!doctype html><html><body><script>function ( { ] )</script></body></html>';
+    const { dom } = parseHtml(html, DEFAULT_LIMITS);
+    const scripts = collectScripts(dom, html, DEFAULT_LIMITS);
+    expect(scripts[0]!.ast).toBeNull();
+    expect(scripts[0]!.parseError).toBeTruthy();
+  });
+});

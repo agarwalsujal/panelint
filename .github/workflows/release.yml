@@ -1,0 +1,57 @@
+# Publish to npm on a version tag, via npm Trusted Publishing (OIDC).
+#
+# There is no long-lived NPM_TOKEN. npm mints a short-lived credential from the
+# GitHub OIDC token and stamps a provenance attestation, so consumers can verify
+# the tarball was built by THIS workflow in THIS repo and not on a maintainer's
+# laptop. `publishConfig.provenance` in package.json enforces the attestation.
+#
+# ── One-time setup on npmjs.com (required before the first tagged release) ──
+#   npmjs.com → panelint → Settings → Trusted Publisher →
+#     Publisher: GitHub Actions
+#     Repository: agarwalsujal/panelint
+#     Workflow:   release.yml
+#   Then set the package to disallow classic/automation tokens (2FA/OIDC only).
+# Without this, `npm publish` below fails closed — which is the intended guard.
+#
+# Third-party actions are pinned to full commit SHAs (mutable tags are a
+# supply-chain vector for a security tool consumers trust). Dependabot's
+# github-actions ecosystem bumps them with a visible diff.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for OIDC Trusted Publishing + provenance
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      # Trusted Publishing (OIDC) needs npm >= 11.5.1; the runner ships npm 10.
+      - run: npm install --global npm@latest
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      # The tag must match package.json's version, or a wrong tag ships a
+      # mislabelled release. Fail loudly rather than publish the mismatch.
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "tag v$TAG != package.json $PKG" >&2
+            exit 1
+          fi
+      - run: npm publish
+        # No NODE_AUTH_TOKEN — the OIDC credential is supplied by Trusted Publishing.

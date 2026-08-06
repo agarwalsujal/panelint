@@ -45,6 +45,7 @@ function ctxFor(html: string, meta: UIResourceMeta | null = null): RuleContext {
     schemaErrors: [],
     scripts: collectScripts(dom, html, DEFAULT_LIMITS),
     rawSource: html,
+    tools: [],
     options: {},
     limits: DEFAULT_LIMITS,
     diagnostic() {},

@@ -43,6 +43,12 @@
  * not carry a description that says "script-src".
  */
 
+// These reach into csp_evaluator's `dist/` internals — the package publishes no
+// `exports` map, so these subpaths are not a stable contract. They are safe today
+// only because csp_evaluator is exact-pinned (package.json) with lockfile
+// integrity, so `dist/` cannot change under us silently. Keep csp_evaluator on
+// manual dependency review (never Dependabot auto-merge): a bump can restructure
+// these paths — a build break CI catches, or a moved check list it might not.
 import { CspParser } from 'csp_evaluator/dist/parser.js';
 import { CspEvaluator } from 'csp_evaluator/dist/evaluator.js';
 import {

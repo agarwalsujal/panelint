@@ -49,6 +49,21 @@ export function parseHtml(html: string, limits: Limits, resourceUri?: string): P
     if (depth > maxDepth) maxDepth = depth;
   });
 
+  // `maxDomNodes` is REPORTED here, not enforced, and that is deliberate.
+  //
+  // The count is only knowable after parse5 has built the tree, so the parse is
+  // already paid for by the time this runs and no rule is prevented from
+  // running on the result. It is not a silent pass — `LIMIT_EXCEEDED` makes
+  // `scanWasTruncated` true and the scan exits 2 under the default
+  // `--on-error fail` — but it does not bound the cost, and a reader of this
+  // line should not believe it does.
+  //
+  // Enforcing it pre-parse would mean counting tags in the raw bytes, which
+  // over-approximates: a comment or a `<script>` string containing 100k `<div>`
+  // substrings would refuse a legitimate document. Refusing conformant input is
+  // the most expensive failure this project has (GOALS.md G2), and the cost
+  // this ceiling was standing in for — `rules x nodes` selector matching — is
+  // now bounded directly by the selector cost model in style-index.ts.
   const nodeDiag = checkLimit('maxDomNodes', nodeCount, limits, resourceUri);
   if (nodeDiag) diagnostics.push(nodeDiag);
   const depthDiag = checkLimit('maxNestingDepth', maxDepth, limits, resourceUri);

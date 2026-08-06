@@ -47,6 +47,7 @@ function ctxFor(html: string, meta: UIResourceMeta | null = null): RuleContext {
     schemaErrors: [],
     scripts: collectScripts(dom, html, DEFAULT_LIMITS),
     rawSource: html,
+    tools: [],
     options: {},
     limits: DEFAULT_LIMITS,
     diagnostic: () => {},
@@ -273,6 +274,28 @@ describe('PANE-EXFIL-006 — <base>', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]!.message).toContain('baseUriDomains');
     expect(findings[0]!.assumption).toBeTruthy();
+  });
+
+  it('does NOT gate when baseUriDomains declares the origin', () => {
+    // Declaring an origin and then pointing <base> at it is the spec's own
+    // mechanism used as designed. At the default --fail-on high this rule used
+    // to gate on it, failing the build of a conformant server. G2 calls a
+    // gate-eligible finding on conformant markup non-negotiable.
+    const meta: UIResourceMeta = { csp: { baseUriDomains: ['https://cdn.example.com'] } };
+    const findings = exfil006.check(
+      ctxFor('<base href="https://cdn.example.com/app/">', meta),
+    ).findings;
+    expect(findings[0]!.severity).toBe('LOW');
+    expect(isGating(findings[0]!, 'HIGH')).toBe(false);
+  });
+
+  it('still gates when no baseUriDomains covers the origin', () => {
+    const meta: UIResourceMeta = { csp: { baseUriDomains: ['https://cdn.example.com'] } };
+    const findings = exfil006.check(
+      ctxFor('<base href="https://attacker.tld/app/">', meta),
+    ).findings;
+    expect(findings[0]!.severity).toBe('HIGH');
+    expect(isGating(findings[0]!, 'HIGH')).toBe(true);
   });
 });
 

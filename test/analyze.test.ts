@@ -443,6 +443,33 @@ describe('budgets', () => {
     expect(d).toBeDefined();
     expect(d!.message).toContain('2 rule');
   });
+
+  it('names every rule the deadline suppressed, not just the count', () => {
+    // Rule order is deterministic and published, so an attacker who wants a
+    // specific rule silenced crafts input whose cost is paid by a rule that
+    // runs before it. A count says analysis was incomplete; it does not say
+    // WHICH rule went unanswered, so "no finding from PANE-FAKE-003" would
+    // still read as "PANE-FAKE-003 checked and found nothing".
+    const times = [0, 0, 100_000, 100_000, 100_000];
+    let i = 0;
+    const now = (): number => times[i++] ?? 100_000;
+
+    const out = analyzeResourceSet(
+      resourceSet([resource('ui://s/a', '<p>x</p>')]),
+      [counterRule('PANE-FAKE-001'), counterRule('PANE-FAKE-002'), counterRule('PANE-FAKE-003')],
+      { now, limits: { ...DEFAULT_LIMITS, perResourceMs: 5_000 } },
+    );
+
+    const suppressed = out.undecided.filter((u) => /time budget/.test(u.reason));
+    expect(suppressed.map((u) => u.ruleId).sort()).toEqual(['PANE-FAKE-002', 'PANE-FAKE-003']);
+    for (const u of suppressed) {
+      expect(u.resourceUri).toBe('ui://s/a');
+      expect(u.reason).toMatch(/unknown, not clean/);
+    }
+    // The rule that DID run is not recorded undecided — that would make the
+    // signal useless by marking everything unknown.
+    expect(out.undecided.some((u) => u.ruleId === 'PANE-FAKE-001')).toBe(false);
+  });
 });
 
 describe('set rules', () => {

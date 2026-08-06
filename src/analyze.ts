@@ -29,6 +29,7 @@ import { DEFAULT_LIMITS, Deadline, checkLimit } from './limits.js';
 import { contained, estimateNestingDepth, limitDiagnostic } from './safe/guard.js';
 import { errorSummary } from './safe/untrusted.js';
 import { parseHtml } from './parse/html.js';
+import { oversizedDomainField } from './parse/meta.js';
 import { buildStyleIndex } from './parse/style-index.js';
 import { collectScripts } from './parse/js.js';
 import { isSetRule } from './types.js';
@@ -47,6 +48,7 @@ import type {
   ScanError,
   SetRule,
   StyleIndexLike,
+  ToolWithUIMeta,
   UIResource,
   UndecidedNote,
 } from './types.js';
@@ -134,7 +136,7 @@ export function analyzeResourceSet(
     // Nothing that outlives this iteration holds a reference into the DOM:
     // findings, diagnostics and undecided notes carry strings and numbers only.
     // 500 resources therefore cost one document's worth of memory, not 500.
-    if (analyzeOne(resource, perResourceRules, limits, now, opts, {
+    if (analyzeOne(resource, perResourceRules, set.tools, limits, now, opts, {
       diagnostics,
       errors,
       undecided,
@@ -196,6 +198,7 @@ interface Sink {
 function analyzeOne(
   resource: UIResource,
   rules: Rule[],
+  tools: readonly ToolWithUIMeta[],
   limits: Limits,
   now: () => number,
   opts: AnalyzeOptions,
@@ -255,21 +258,48 @@ function analyzeOne(
     }
   } else {
     sink.diagnostics.push({
-      code: 'PARSE_FAILED',
+      code: 'INPUT_DEGRADED',
       message: `The style index could not be built (${styleOutcome.reason}); CSS-dependent rules see no declarations.`,
       resourceUri: resource.uri,
+      detail:
+        'Every CSS-dependent rule ran against an empty cascade, so "no finding" from any of them ' +
+        'means nothing was examined. This is truncation, not a clean result.',
     });
   }
 
   const scriptOutcome = runContained(() => collectScripts(dom, raw, limits));
   if (!scriptOutcome.ok) {
     sink.diagnostics.push({
-      code: 'PARSE_FAILED',
+      code: 'INPUT_DEGRADED',
       message: `Script collection failed (${scriptOutcome.reason}); script rules see no scripts.`,
       resourceUri: resource.uri,
+      detail:
+        'Every script rule ran against an empty script list, so "no finding" from any of them ' +
+        'means nothing was examined. This is truncation, not a clean result.',
     });
   }
   const scripts = scriptOutcome.ok ? scriptOutcome.value : [];
+
+  // ── The `_meta` ceiling ─────────────────────────────────────────────────
+  // No limit key covered `_meta`, and the PANE-EXFIL and PANE-CSP families cost
+  // `domains x elements` with the server choosing both. Rules that read meta
+  // are refused rather than fed a truncated list, because a shortened
+  // `connectDomains` flips "is this URL declared?" from yes to no and invents a
+  // finding on conformant markup out of a resource limit.
+  const oversized = oversizedDomainField(resource.meta, limits.maxMetaDomains);
+  if (oversized) {
+    sink.diagnostics.push({
+      code: 'LIMIT_EXCEEDED',
+      message:
+        `maxMetaDomains exceeded: _meta.ui.csp.${oversized.field} declares ${oversized.count} ` +
+        `entries > ${limits.maxMetaDomains}.`,
+      resourceUri: resource.uri,
+      detail:
+        'Rules that read `_meta` did not run against this resource. The list was refused rather ' +
+        'than truncated: a partial domain list would make a declared origin read as undeclared, ' +
+        'turning a resource ceiling into a finding on conformant markup.',
+    });
+  }
 
   // ── The per-resource wall-clock budget ──────────────────────────────────
   // Cooperative, checked BETWEEN rules. A synchronous parse or selector match
@@ -280,21 +310,49 @@ function analyzeOne(
 
   for (let i = 0; i < rules.length; i++) {
     if (deadline.expired) {
-      const remaining = rules.length - i;
+      const notRun = rules.slice(i);
       sink.diagnostics.push({
         code: 'LIMIT_EXCEEDED',
-        message: `perResourceMs budget exhausted; ${remaining} rule${remaining === 1 ? '' : 's'} did not run.`,
+        message: `perResourceMs budget exhausted; ${notRun.length} rule${notRun.length === 1 ? '' : 's'} did not run.`,
         resourceUri: resource.uri,
         detail:
           'The budget is checked between rules. A synchronous parse or selector match cannot be ' +
           'interrupted, so this ceiling bounds work not yet started, not wall clock already spent. ' +
           'Analysis of this resource is incomplete.',
       });
+      // ── Why each unrun rule is named, not just counted ──────────────────
+      // Rule execution order is deterministic and published, so an attacker who
+      // wants PANE-X silenced crafts input whose cost is paid by a rule that
+      // runs BEFORE it. The count alone does not say WHICH rules were skipped,
+      // so a consumer reading findings-by-rule cannot tell "ran, found nothing"
+      // from "never ran" — and those must never be the same answer. This is the
+      // same reason a rule that throws is recorded undecided a few lines below.
+      for (const skipped of notRun) {
+        sink.undecided.push({
+          ruleId: skipped.id,
+          resourceUri: resource.uri,
+          reason:
+            'the per-resource time budget was exhausted before this rule ran; its result is ' +
+            'unknown, not clean',
+        });
+      }
       break;
     }
 
     const rule = rules[i]!;
-    const ctx = makeContext(resource, dom, styles, scripts, limits, opts, rule.id, sink);
+
+    if (oversized && requirementsOf(rule).includes('meta')) {
+      sink.undecided.push({
+        ruleId: rule.id,
+        resourceUri: resource.uri,
+        reason:
+          `_meta.ui.csp.${oversized.field} declares more entries than maxMetaDomains permits, so ` +
+          'this rule was not run against it; its result is unknown, not clean',
+      });
+      continue;
+    }
+
+    const ctx = makeContext(resource, dom, styles, scripts, tools, limits, opts, rule.id, sink);
     const outcome = runContained(() => rule.check(ctx));
 
     if (!outcome.ok) {
@@ -326,6 +384,7 @@ function makeContext(
   dom: RuleContext['dom'],
   styles: StyleIndexLike,
   scripts: RuleContext['scripts'],
+  tools: readonly ToolWithUIMeta[],
   limits: Limits,
   opts: AnalyzeOptions,
   ruleId: string,
@@ -344,6 +403,9 @@ function makeContext(
     // normalises away — tag characters, entity-encoded bidi controls — so they
     // need the undecoded bytes, not the serialized tree.
     rawSource: resource.content,
+    // The set's tool list. `requires: ['tools']` already gated this rule out of
+    // any mode that cannot supply one, so empty here means the set has none.
+    tools,
     options: opts.ruleOptions?.[ruleId] ?? {},
     limits,
     diagnostic(code: DiagnosticCode, message: string, detail?: string): void {

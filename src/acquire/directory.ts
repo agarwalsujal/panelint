@@ -58,8 +58,16 @@ import {
 } from '../safe/paths.js';
 import { safe } from '../safe/untrusted.js';
 
-/** `ui://` URIs, captured from any quoting style in any language. */
-const UI_URI_RE = /ui:\/\/[A-Za-z0-9._~\-]+(?:\/[A-Za-z0-9._~\-%]+)*/g;
+/**
+ * `ui://` URIs, captured from any quoting style in any language.
+ *
+ * The `i` flag is load-bearing and applies only to the scheme: the character
+ * classes already span both cases. RFC 3986 §3.1 makes a scheme
+ * case-insensitive, so `UI://server/view` names the same resource — and
+ * without the flag a one-character change made a declared resource invisible
+ * to directory mode, matching the same gap the live and capture paths had.
+ */
+const UI_URI_RE = /ui:\/\/[A-Za-z0-9._~\-]+(?:\/[A-Za-z0-9._~\-%]+)*/gi;
 
 /**
  * A literal path handed to a file-reading call.
@@ -283,23 +291,49 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
   for (const sites of declaredSorted) {
     const decl = sites[0]!;
 
-    // (a) depends only on the root and the URI's own path tail, so it is the
-    // same answer for every site and is tried once.
-    let resolved = resolveBySiblingFile(rootReal, decl, opts.maxFileBytes);
+    // ── Every route is resolved, not just the first that answers ───────────
+    // (a) used to be tried first and win outright, so a hostile PR author who
+    // controls both files added a 38-byte `app/panel.html` containing
+    // `<h1>ok</h1>` and the real inline literal in `server.js` was never read:
+    // 7 findings and 5 gating became 0 findings at exit 0, with no diagnostic
+    // that a second candidate had ever existed.
+    //
+    // The earlier fix here made (b) and (c) try every declaring SITE, which
+    // stopped a decoy declaration site from hiding a real one. It did not stop
+    // a decoy ROUTE from hiding a real one, because the routes are still
+    // ordered and the first still wins.
+    //
+    // Candidates are collected from all three routes and deduplicated by
+    // content hash. When they disagree, every distinct content is scanned:
+    // adding a benign file can then only ADD a resource, never remove one.
+    const candidates: Array<{ resolved: Resolved; hash: string }> = [];
+    const seenHashes = new Set<string>();
+    const addCandidate = (r: Resolved | null): void => {
+      if (!r) return;
+      const hash = sha256Resource({ text: r.content });
+      if (seenHashes.has(hash)) return;
+      seenHashes.add(hash);
+      candidates.push({ resolved: r, hash });
+    };
 
-    // (b) and (c) read the declaring file, so they are tried against EVERY file
-    // that mentions the URI. Trying only the first is what let a decoy that
-    // sorted earlier in the walk hide the real declaration.
-    if (!resolved) {
-      for (const site of sites) {
-        resolved =
-          resolveByInlineLiteral(site, fileText) ??
-          resolveByLiteralReadCall(rootReal, site, fileText, opts.maxFileBytes);
-        if (resolved) break;
-      }
+    addCandidate(resolveBySiblingFile(rootReal, decl, opts.maxFileBytes));
+    for (const site of sites) {
+      addCandidate(resolveByInlineLiteral(site, fileText));
+      addCandidate(resolveByLiteralReadCall(rootReal, site, fileText, opts.maxFileBytes));
     }
 
-    if (!resolved) {
+    if (candidates.length > 1) {
+      diagnostics.push({
+        code: 'UNRESOLVED_URI',
+        resourceUri: safe(decl.uri, SANITIZE_CAPS.uri),
+        message: `${candidates.length} different contents resolve for this URI; all were scanned.`,
+        detail:
+          'A sibling file, an inline literal and a literal-path read call disagreed. Which one the ' +
+          'server actually serves is not decidable from source, so none was preferred.',
+      });
+    }
+
+    if (candidates.length === 0) {
       // Step 4. A diagnostic, never a finding — and it names only the URI. The
       // paths that failed came from attacker-controlled source and must not be
       // echoed into a report.
@@ -315,18 +349,20 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
       continue;
     }
 
-    resources.push({
-      uri: safe(decl.uri, SANITIZE_CAPS.uri),
-      // Directory mode cannot observe what a server serves. The spec-mandated
-      // type is recorded as the declared intent, not as an observation.
-      mimeType: MCP_APP_MIME,
-      content: resolved.content,
-      contentHash: sha256Resource({ text: resolved.content }),
-      schemaErrors: [],
-      source: 'directory',
-      filePath: safe(resolved.filePath, SANITIZE_CAPS.path),
-      // `meta` is deliberately absent. See the header note.
-    });
+    for (const { resolved, hash } of candidates) {
+      resources.push({
+        uri: safe(decl.uri, SANITIZE_CAPS.uri),
+        // Directory mode cannot observe what a server serves. The spec-mandated
+        // type is recorded as the declared intent, not as an observation.
+        mimeType: MCP_APP_MIME,
+        content: resolved.content,
+        contentHash: hash,
+        schemaErrors: [],
+        source: 'directory',
+        filePath: safe(resolved.filePath, SANITIZE_CAPS.path),
+        // `meta` is deliberately absent. See the header note.
+      });
+    }
   }
 
   return {

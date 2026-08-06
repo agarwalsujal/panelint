@@ -113,15 +113,40 @@ function makeScript(
       parseError: `script exceeds maxScriptBytes (${limits.maxScriptBytes})`,
     };
   }
+  // ── Why this parses TWICE, script first ─────────────────────────────────
+  // An inline `<script>` body and an `on*` attribute handler are CLASSIC,
+  // sloppy-mode code. Parsing them as a module puts acorn in strict mode, where
+  // constructs every browser executes are syntax errors — and a syntax error
+  // here sets `ast: null`, which every AST rule treats as "no script to look
+  // at". Each of these one-liners, prepended to a hostile script, blanked the
+  // whole thing in 0.1.3 and took PANE-MSG-001 and PANE-DOM-001 (both HIGH and
+  // gate-eligible) to exit 0:
+  //
+  //     with(window){var z=1;}      octal `var n = 0755;`
+  //     <!-- legacy comment         function f(a,a){}
+  //     arguments = 1               delete localVar
+  //     var interface = 1
+  //
+  // Script mode is therefore the primary attempt. Module mode is the fallback,
+  // because `import`/`export` are the only things it accepts that script mode
+  // does not, and a real module carries `type="module"`.
+  const shared = {
+    ecmaVersion: 'latest' as const,
+    allowReturnOutsideFunction: true,
+    allowAwaitOutsideFunction: true,
+    allowSuperOutsideMethod: true,
+    allowHashBang: true,
+    locations: true,
+  };
+
   try {
-    const ast = acornParse(code, {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      allowReturnOutsideFunction: true,
-      allowAwaitOutsideFunction: true,
-      allowSuperOutsideMethod: true,
-      locations: true,
-    });
+    return { ...base, ast: acornParse(code, { ...shared, sourceType: 'script' }) };
+  } catch {
+    /* fall through to module mode */
+  }
+
+  try {
+    const ast = acornParse(code, { ...shared, sourceType: 'module' });
     return { ...base, ast };
   } catch (e) {
     // A script that does not parse is a fact about the resource, not a crash.

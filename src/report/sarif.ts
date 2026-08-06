@@ -28,7 +28,7 @@
  * gives `[text](target)` a link meaning inside message strings.
  */
 
-import { isGating } from '../exit.js';
+import { isGating, scanWasTruncated } from '../exit.js';
 import { encodeForSarif, type Untrusted } from '../safe/untrusted.js';
 import type { Finding, RuleClass, RuleMeta, Severity } from '../types.js';
 import {
@@ -205,10 +205,19 @@ export function renderSarif(report: ScanReport, rules: readonly RuleMeta[]): str
         },
         invocations: [
           {
-            executionSuccessful: report.errors.length === 0,
+            // A scan a limit truncated is NOT a successful execution. This read
+            // `errors.length === 0` alone, so a scan that stopped early — the
+            // one case where "0 results" means "nothing was looked at" — was
+            // indistinguishable from a clean one in the Security tab, which is
+            // the documented distribution mechanism. `scanWasTruncated` was
+            // written for exactly this and had zero callers.
+            executionSuccessful:
+              report.errors.length === 0 && !scanWasTruncated(report.diagnostics),
             ...(header.scannedAt ? { endTimeUtc: esc(identText(header.scannedAt)) } : {}),
             toolConfigurationNotifications: report.diagnostics.map((d) => ({
-              level: 'note' as const,
+              // Truncation is a warning, not a note: GitHub renders notes
+              // nowhere an operator will look.
+              level: (d.code === 'LIMIT_EXCEEDED' ? 'warning' : 'note') as 'warning' | 'note',
               descriptor: { id: d.code },
               message: { text: esc(messageText(d.message)) },
               ...(d.resourceUri

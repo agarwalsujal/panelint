@@ -12,17 +12,12 @@
  * produced by a tool that actually belongs to `other.html`.
  */
 
-import type { Finding, RuleContext, RuleResult, ToolWithUIMeta } from '../../types.js';
+import type { Finding, RuleContext, RuleResult } from '../../types.js';
 import { defineRule, makeFinding } from '../shared/helpers.js';
 
 const REMEDIATION =
   'If this tool is genuinely app-only, document why in the tool description. If the model should ' +
   'also be able to call it, add `"model"` to `visibility`.';
-
-function toolsOf(ctx: RuleContext): ToolWithUIMeta[] {
-  const tools = ctx.options['tools'];
-  return Array.isArray(tools) ? (tools as ToolWithUIMeta[]) : [];
-}
 
 export const context004 = defineRule({
   id: 'PANE-CONTEXT-004',
@@ -41,7 +36,7 @@ export const context004 = defineRule({
     const findings: Finding[] = [];
     let n = 0;
 
-    for (const tool of toolsOf(ctx)) {
+    for (const tool of ctx.tools) {
       const visibility = tool.meta?.visibility;
       if (!Array.isArray(visibility)) continue;
       if (!visibility.includes('app') || visibility.includes('model')) continue;

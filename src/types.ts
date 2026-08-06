@@ -8,6 +8,7 @@
  * and `set` is absent from RuleContext — cross-resource rules are `SetRule`s.
  */
 
+import type { ConfigDiagnosticCode } from './config/types.js';
 import type { Document, Element, AnyNode } from 'domhandler';
 import type { ErrorObject } from 'ajv';
 
@@ -135,6 +136,17 @@ export interface UIResource {
   source: AcquireSource;
   /** Where the content came from on disk, when it came from disk. */
   filePath?: string;
+  /**
+   * How this resource was found.
+   *
+   * `resources/list` is not the complete set. The spec explicitly permits a
+   * server to omit a tool-referenced app resource from the listing (apps.mdx
+   * L395), so a scan that reads only what was listed reports NO_RESOURCES_FOUND
+   * and exit 0 against an entire sanctioned class of conformant server. A
+   * resource reached only through a tool's `_meta.ui.resourceUri` is marked
+   * `tool-reference` so the report can say the listing did not mention it.
+   */
+  discoveredVia?: 'list' | 'tool-reference';
 }
 
 export interface ToolWithUIMeta {
@@ -147,7 +159,20 @@ export interface ToolWithUIMeta {
   schemaErrors: ErrorObject[];
 }
 
+/**
+ * Config, suppression and baseline diagnostics are scan diagnostics too.
+ *
+ * They were computed and then dropped: `src/cli.ts` merged `set.diagnostics`
+ * and `analysis.diagnostics` and never `suppression.diagnostics`, so a scanned
+ * tree attempting to silence the scanner produced no visible evidence at all —
+ * including `INLINE_SUPPRESSION_IGNORED`, which carries "would have hidden N
+ * findings". Unioning the code sets keeps every code exactly as it was rather
+ * than flattening them into one lossy value.
+ *
+ * `import type` cycles are erased at runtime, so this costs nothing.
+ */
 export type DiagnosticCode =
+  | ConfigDiagnosticCode
   | 'UNRESOLVED_URI'
   | 'LIMIT_EXCEEDED'
   | 'PARSE_FAILED'
@@ -155,6 +180,20 @@ export type DiagnosticCode =
   | 'UNDECIDED_CASCADE'
   | 'SELECTOR_SKIPPED'
   | 'CAPABILITY_NOT_DECLARED'
+  /** Read because a tool referenced it, though `resources/list` omitted it. */
+  | 'UNLISTED_RESOURCE'
+  /**
+   * A WHOLE analysis input degraded to empty — the style index could not be
+   * built, or script collection failed. Distinct from `PARSE_FAILED`, which
+   * covers a partial loss such as one unparseable `<style>` block.
+   *
+   * The distinction earns its keep at the exit code. Every CSS rule seeing no
+   * declarations, or every JS rule seeing no scripts, means "0 findings" is an
+   * absence of analysis rather than an absence of findings — and that was
+   * reported as a plain diagnostic, so a resource whose stylesheet Panelint
+   * could not parse exited 0 with a clean report.
+   */
+  | 'INPUT_DEGRADED'
   | 'SPAWN_REFUSED';
 
 export interface ScanDiagnostic {
@@ -253,6 +292,15 @@ export interface Limits {
   base64DecodeCap: number;
   maxScriptBytes: number;
   maxEvidenceChars: number;
+  /**
+   * Entries permitted in one `_meta.ui.csp` domain array.
+   *
+   * `_meta` was covered by no limit key at all. Rules in the PANE-EXFIL and
+   * PANE-CSP families compare every declared domain against every candidate
+   * element, so the cost is `domains x elements` and a server controls both
+   * factors. Measured: 10,000 domains against 4,000 `<img>` ran 17 s.
+   */
+  maxMetaDomains: number;
 }
 
 /** Node-indexed declared style. Returns what applies to *this* node. */
@@ -314,6 +362,18 @@ export interface RuleContext {
   scripts: ScriptSource[];
   /** The raw resource text, for carriers parse5 normalizes away. */
   rawSource: string;
+  /**
+   * The server's tool list, or empty when the scan mode cannot supply one.
+   *
+   * A per-resource rule that reasons about tools needs this. It used to be
+   * reachable only through `options['tools']`, which nothing ever populated —
+   * `analyzeResourceSet` is called with no `ruleOptions` on every code path,
+   * so PANE-CONTEXT-004 and PANE-CONTEXT-010 could not fire at all. Rules that
+   * need tools declare `requires: ['tools']` and are skipped with a diagnostic
+   * in modes that have none, so an empty array here means "this set has no
+   * tools", never "this mode could not tell you".
+   */
+  tools: readonly ToolWithUIMeta[];
   options: Record<string, unknown>;
   limits: Limits;
   /** Emit a diagnostic without emitting a finding. */

@@ -51,7 +51,13 @@ import type {
 import { DEFAULT_LIMITS } from '../limits.js';
 import { isStrictBase64 } from '../safe/guard.js';
 import { safe, errorSummary } from '../safe/untrusted.js';
-import { extractUiMeta, extractToolUiMeta, resolveMeta } from '../parse/meta.js';
+import {
+  extractUiMeta,
+  extractToolUiMeta,
+  rawUiMetaValue,
+  resolveMeta,
+  uiMetaIsMalformed,
+} from '../parse/meta.js';
 import {
   createMetaValidator,
   validateResourceMeta,
@@ -65,6 +71,8 @@ import {
   CaptureError,
   DEFAULT_MAX_CAPTURE_BYTES,
   SANITIZE_CAPS,
+  isUiUri,
+  isAppMime,
 } from './types.js';
 import type {
   CaptureContentItem,
@@ -285,7 +293,10 @@ export function replayCapture(capture: CaptureFile, options: CaptureLoadOptions 
   const readSeen = new Set<string>();
 
   for (const entry of capture.resourcesRead) {
-    if (!isUiUri(entry.uri)) continue;
+    // In scope on the `ui://` scheme OR the MCP App MIME type. Scheme-only
+    // filtering dropped an app resource at `app://evil/panel.html` silently,
+    // and deleted PANE-SPEC-001's only input along with it.
+    if (!isUiUri(entry.uri) && !entryDeclaresAppMime(entry, listByUri)) continue;
     if (readSeen.has(entry.uri)) {
       diagnostics.push({
         code: 'PARSE_FAILED',
@@ -343,10 +354,6 @@ export function replayCapture(capture: CaptureFile, options: CaptureLoadOptions 
   return set;
 }
 
-function isUiUri(uri: string): boolean {
-  return uri.startsWith('ui://');
-}
-
 function toResource(
   entry: CaptureReadEntry,
   listed: CaptureListedResource | undefined,
@@ -354,9 +361,37 @@ function toResource(
   diagnostics: ScanDiagnostic[],
 ): UIResource | null {
   const uri = safe(entry.uri, SANITIZE_CAPS.uri);
-  const item = entry.contents.find(
-    (c) => typeof (c as CaptureContentItem).text === 'string' || typeof (c as CaptureContentItem).blob === 'string',
-  ) as CaptureContentItem | undefined;
+
+  // ── Which content item, and why it is not simply the first ───────────────
+  // `resources/read` returns a LIST. Taking the first item with bytes ignored
+  // `mimeType` entirely, so a server could put a benign `text/plain` item first
+  // and the real `text/html;profile=mcp-app` app second: a host selecting by
+  // MIME type renders the second, and Panelint hashed and analysed the first.
+  // Measured — a 31-byte "hello" item ahead of a hostile app produced 0
+  // findings at exit 0.
+  //
+  // The app-MIME item wins. Any other item carrying bytes is named in a
+  // diagnostic rather than dropped silently, because "there was more here than
+  // I looked at" is exactly the fact a truncated-looking report has to carry.
+  const withBytes = entry.contents.filter(
+    (c) =>
+      typeof (c as CaptureContentItem).text === 'string' ||
+      typeof (c as CaptureContentItem).blob === 'string',
+  ) as CaptureContentItem[];
+
+  const item =
+    withBytes.find((c) => typeof c.mimeType === 'string' && isAppMime(c.mimeType)) ?? withBytes[0];
+
+  if (item && withBytes.length > 1) {
+    diagnostics.push({
+      code: 'UNRESOLVED_URI',
+      resourceUri: uri,
+      message: `resources/read returned ${withBytes.length} content items carrying bytes; only one was analysed.`,
+      detail:
+        'The item declaring the MCP App MIME type is preferred, then the first. The others were ' +
+        'not scanned, and a host may select a different one.',
+    });
+  }
 
   if (!item) {
     diagnostics.push({
@@ -456,6 +491,16 @@ function toResource(
     // was called from test files only, and a server misspelling connectDomain
     // got a clean report.
     resource.schemaErrors = validateResourceMeta(createMetaValidator(), resolved);
+  } else if (uiMetaIsMalformed(item._meta) || uiMetaIsMalformed(listed?._meta)) {
+    // Present but not an object. `extractUiMeta` answers `undefined` for that
+    // and for a genuine absence alike, so `{ ui: [{ csp: … }] }` resolved to
+    // null and read as "this resource declares no _meta" — one bracket taking a
+    // gate-eligible finding to exit 0. It is a schema violation, so it is
+    // validated as one.
+    const malformed = uiMetaIsMalformed(item._meta)
+      ? rawUiMetaValue(item._meta)
+      : rawUiMetaValue(listed?._meta);
+    resource.schemaErrors = validateResourceMeta(createMetaValidator(), malformed);
   }
   return resource;
 }
@@ -714,4 +759,22 @@ export function captureFromResourceSet(
     })),
     ...(capturedAt ? { capturedAt } : {}),
   });
+}
+
+/**
+ * Does this read entry, or its listing, declare the MCP App MIME type?
+ *
+ * The scheme filter alone let a resource served off `ui://` disappear without a
+ * diagnostic — which also removed PANE-SPEC-001's only input, since that rule
+ * exists to report an app resource that is not on the `ui://` scheme.
+ */
+function entryDeclaresAppMime(
+  entry: CaptureReadEntry,
+  listByUri: Map<string, CaptureListedResource>,
+): boolean {
+  const listedMime = listByUri.get(entry.uri)?.mimeType;
+  if (typeof listedMime === 'string' && isAppMime(listedMime)) return true;
+  return entry.contents.some(
+    (c) => typeof c.mimeType === 'string' && isAppMime(c.mimeType),
+  );
 }

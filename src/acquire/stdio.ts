@@ -57,9 +57,16 @@ import type {
 } from '../types.js';
 import { DEFAULT_LIMITS, checkLimit } from '../limits.js';
 import { sha256Resource } from './hash.js';
+import { isAppMime, isUiUri } from './types.js';
 import { isStrictBase64 } from '../safe/guard.js';
 import { errorSummary, safe } from '../safe/untrusted.js';
-import { extractToolUiMeta, extractUiMeta, resolveMeta } from '../parse/meta.js';
+import {
+  extractToolUiMeta,
+  extractUiMeta,
+  rawUiMetaValue,
+  resolveMeta,
+  uiMetaIsMalformed,
+} from '../parse/meta.js';
 import {
   createMetaValidator,
   validateResourceMeta,
@@ -234,16 +241,61 @@ export async function acquireStdio(opts: StdioAcquireOptions): Promise<ResourceS
     const tools = await listAllTools(client, reqOpts, maxPages, diagnostics, errors);
     set.tools = tools;
 
-    const uiEntries = listed.filter((r) => typeof r.uri === 'string' && r.uri.startsWith(UI_URI_SCHEME));
+    // A resource is in scope if its URI uses the `ui://` scheme OR it declares
+    // the MCP App MIME type. Filtering on the scheme alone dropped an app
+    // resource served at `app://evil/panel.html` with zero resources, exit 0
+    // and no diagnostic naming it — and PANE-SPEC-001 exists precisely to flag
+    // an app resource that is not on `ui://`, so the filter was deleting the
+    // rule's only possible input.
+    const uiEntries = listed.filter(
+      (r) => isUiUri(r.uri) || (typeof r.mimeType === 'string' && isAppMime(r.mimeType)),
+    );
 
-    const capExceeded = checkLimit('maxTotalResources', uiEntries.length, limits);
+    // ── Resources a tool references but the listing omits ──────────────────
+    // `resources/list` is NOT the complete set of app resources. apps.mdx L395
+    // explicitly permits a server to serve a tool-referenced app resource
+    // without listing it. Reading only the listing therefore reports
+    // NO_RESOURCES_FOUND and exits 0 against a whole class of conformant
+    // server — a silent pass an attacker can also simply choose, by omitting
+    // the one resource carrying the payload.
+    const listedUris = new Set(uiEntries.map((r) => r.uri));
+    const referenced: ListedResource[] = [];
+    const seenReferenced = new Set<string>();
+    for (const tool of tools) {
+      const uri = tool.meta?.resourceUri;
+      if (!isUiUri(uri)) continue;
+      if (listedUris.has(uri) || seenReferenced.has(uri)) continue;
+      seenReferenced.add(uri);
+      referenced.push({ uri });
+    }
+
+    // The cap applies to the union, not to each source, or a server that lists
+    // maxTotalResources entries would get unbounded extra reads for free.
+    const allEntries = [
+      ...uiEntries.map((e) => ({ entry: e, via: 'list' as const })),
+      ...referenced.map((e) => ({ entry: e, via: 'tool-reference' as const })),
+    ];
+    const capExceeded = checkLimit('maxTotalResources', allEntries.length, limits);
     if (capExceeded) diagnostics.push(capExceeded);
-    const toRead = uiEntries.slice(0, limits.maxTotalResources);
+    const toRead = allEntries.slice(0, limits.maxTotalResources);
 
-    for (const entry of toRead) {
+    if (referenced.length > 0) {
+      diagnostics.push({
+        code: 'UNLISTED_RESOURCE',
+        message:
+          `${referenced.length} app resource${referenced.length === 1 ? '' : 's'} referenced by a ` +
+          'tool but absent from `resources/list`; read anyway.',
+        detail:
+          'The specification permits this omission (apps.mdx L395), so it is conformant and not ' +
+          'itself a finding. It is recorded because a scan that reads only the listing would have ' +
+          'reported no resources and exited 0.',
+      });
+    }
+
+    for (const { entry, via } of toRead) {
       if (abort.signal.aborted) break;
       const resource = await readOne(client, reqOpts, entry, limits, diagnostics, errors);
-      if (resource) set.resources.push(resource);
+      if (resource) set.resources.push({ ...resource, discoveredVia: via });
     }
 
     if (set.resources.length === 0 && errors.length === 0) {
@@ -621,7 +673,17 @@ async function readOne(
     ...(resolved !== null ? { meta: resolved } : {}),
     // Validated against the vendored JSON Schema. This was [], which made every
     // PANE-SCHEMA rule dead code on the live path too.
-    schemaErrors: resolved !== null ? validateResourceMeta(createMetaValidator(), resolved) : [],
+    //
+    // A PRESENT but wrongly-typed `_meta.ui` (an array, a string) is validated
+    // as the schema violation it is. It used to resolve to null and be
+    // indistinguishable from an omission, so one bracket around an object took
+    // a gate-eligible finding to exit 0.
+    schemaErrors:
+      resolved !== null
+        ? validateResourceMeta(createMetaValidator(), resolved)
+        : uiMetaIsMalformed(item['_meta'])
+          ? validateResourceMeta(createMetaValidator(), rawUiMetaValue(item['_meta']))
+          : [],
     contentHash,
     source: SOURCE,
   };

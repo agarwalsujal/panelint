@@ -62,7 +62,7 @@ export const CLI_ONLY_KEYS: ReadonlySet<string> = new Set([
   // Resource ceilings. Raising them is a denial-of-service against the scanner.
   'limits', 'maxResourceBytes', 'maxDomNodes', 'maxCssRules', 'selectorMatchBudget',
   'perResourceMs', 'maxTotalResources', 'maxNestingDepth', 'base64DecodeCap',
-  'maxScriptBytes', 'maxEvidenceChars',
+  'maxScriptBytes', 'maxEvidenceChars', 'maxMetaDomains',
   // What Panelint validates against, and what it treats as already accepted.
   'schema', 'schemaPath', 'baseline', 'baselinePath',
   // Self-granted trust.

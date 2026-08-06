@@ -1,0 +1,19 @@
+# Keeps SHA-pinned actions and pinned npm deps current with a reviewable diff.
+# Pinning without this rots; Dependabot bumps the SHA and shows what moved.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: '/' # covers .github/workflows/* and the composite action.yml
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+    # csp_evaluator is reached via unstable deep imports (no exports map); a bump
+    # can move internal paths, so it must be human-read, never auto-merged.
+    open-pull-requests-limit: 10

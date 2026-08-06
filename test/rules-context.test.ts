@@ -12,14 +12,23 @@
  * (@modelcontextprotocol/ext-apps@1.7.5). Every rule here must score it clean.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { parseHtml } from '../src/parse/html.js';
 import { buildStyleIndex } from '../src/parse/style-index.js';
 import { collectScripts } from '../src/parse/js.js';
 import { DEFAULT_LIMITS } from '../src/limits.js';
-import type { RuleContext, RuleResult, ToolWithUIMeta, UIResourceMeta } from '../src/types.js';
+import { analyzeResourceSet } from '../src/analyze.js';
+import { selectRules } from '../src/rules/registry.js';
+import { sha256Resource } from '../src/acquire/hash.js';
+import type {
+  ResourceSet,
+  RuleContext,
+  RuleResult,
+  ToolWithUIMeta,
+  UIResourceMeta,
+} from '../src/types.js';
 
 import { context001 } from '../src/rules/context/context-001.js';
 import { context002 } from '../src/rules/context/context-002.js';
@@ -57,7 +66,12 @@ function ctxFor(html: string, o: CtxOptions = {}): RuleContext {
     schemaErrors: [],
     scripts: collectScripts(dom, html, limits),
     rawSource: html,
-    options: o.tools ? { tools: o.tools } : {},
+    // Tools reach a rule as `ctx.tools`, NOT through `ctx.options`. This helper
+    // used to build `options: { tools }`, which is why PANE-CONTEXT-004 and -010
+    // had green tests while being unreachable in production: nothing on any real
+    // code path populates `ruleOptions`, so the rules saw an empty list forever.
+    tools: o.tools ?? [],
+    options: {},
     limits,
     diagnostic: () => {},
   };
@@ -414,5 +428,94 @@ describe('family invariants', () => {
   it('an empty document produces nothing anywhere', () => {
     const ctx = ctxFor('<!doctype html><title>t</title><p>hello</p>');
     for (const r of ALL) expect(r.check(ctx).findings, r.id).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reachability through the real pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * PANE-CONTEXT-004 and -010 shipped in 0.1.0 through 0.1.3 unable to fire.
+ *
+ * Both read their tool list from `ctx.options['tools']`. `ruleOptions` is the
+ * only thing that populates `ctx.options`, and no code path ever passes it —
+ * `src/cli.ts` calls `analyzeResourceSet(set, rules, { limits })`. So the rules
+ * saw an empty list on every scan ever run, while the unit tests above passed,
+ * because the test helper built `options: { tools }` by hand.
+ *
+ * Calling a rule directly cannot catch that. These go through the acquire
+ * shape and the analyze runner, the same way test/never-fire.test.ts does, and
+ * assert the rules reach a real tool list.
+ */
+describe('PANE-CONTEXT-004 / -010 — reachable through analyzeResourceSet', () => {
+  const MIME = 'text/html;profile=mcp-app';
+  const URI = 'ui://reach/app.html';
+
+  function setWith(tools: ToolWithUIMeta[]): ResourceSet {
+    const content = '<!doctype html><html><body><p>hello</p></body></html>';
+    return {
+      serverName: 'reach-server',
+      protocolVersion: '2025-11-25',
+      declaresUiExtension: true,
+      declaredMimeTypes: [MIME],
+      resources: [
+        {
+          uri: URI,
+          mimeType: MIME,
+          listedMimeType: MIME,
+          content,
+          contentHash: sha256Resource({ text: content }),
+          schemaErrors: [],
+          source: 'capture',
+        },
+      ],
+      tools,
+      diagnostics: [],
+      errors: [],
+      scannedAt: '2026-08-05T00:00:00.000Z',
+      source: 'capture',
+    };
+  }
+
+  function firedIds(tools: ToolWithUIMeta[]): string[] {
+    const result = analyzeResourceSet(setWith(tools), selectRules({ experimental: true }));
+    return [...new Set(result.findings.map((f) => f.ruleId))].sort();
+  }
+
+  it('PANE-CONTEXT-004 fires end-to-end on visibility ["app"]', () => {
+    const fired = firedIds([
+      { name: 'refresh_chart', meta: { resourceUri: URI, visibility: ['app'] }, schemaErrors: [] },
+    ]);
+    expect(fired).toContain('PANE-CONTEXT-004');
+  });
+
+  it('PANE-CONTEXT-010 fires end-to-end on a destructive-verb tool', () => {
+    const fired = firedIds([
+      { name: 'delete_dashboard', meta: { resourceUri: URI }, schemaErrors: [] },
+    ]);
+    expect(fired).toContain('PANE-CONTEXT-010');
+  });
+
+  it('neither fires when the set has no tools', () => {
+    const fired = firedIds([]);
+    expect(fired).not.toContain('PANE-CONTEXT-004');
+    expect(fired).not.toContain('PANE-CONTEXT-010');
+  });
+
+  it('no rule reads a tool list out of ctx.options', () => {
+    // The defect was structural, not a typo. `ctx.options` is populated only by
+    // `ruleOptions`, which nothing passes, so any rule sourcing tools from it is
+    // dead on arrival. Tools reach a rule as `ctx.tools`.
+    const rulesDir = fileURLToPath(new URL('../src/rules/', import.meta.url));
+    const files = readdirSync(rulesDir, { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.ts'));
+    expect(files.length).toBeGreaterThan(50);
+    for (const rel of files) {
+      const src = readFileSync(`${rulesDir}${rel}`, 'utf8');
+      expect(src, `${rel} sources tools from ctx.options`).not.toMatch(
+        /options\s*\[\s*['"]tools['"]\s*\]/,
+      );
+    }
   });
 });

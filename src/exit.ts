@@ -84,7 +84,14 @@ export function selectExitCode(
   if (onError === 'fail' && errors.length > 0) return 2;
   // A limit stopped the scan before it saw everything, so "0 findings" is not
   // an absence of findings — it is an absence of analysis.
-  if (onError === 'fail' && diagnostics.some((d) => d.code === 'LIMIT_EXCEEDED')) return 2;
+  //
+  // `INPUT_DEGRADED` is here for the same reason and was missing: a resource
+  // whose style index could not be built ran every CSS rule against an empty
+  // cascade, and one whose scripts did not collect ran every JS rule against an
+  // empty list. Both reported "0 findings" at exit 0. Measured —
+  // `<style>@media screen{.s{opacity:0}</style>` (browsers auto-close at EOF,
+  // postcss does not) suppressed a CRITICAL finding that way.
+  if (onError === 'fail' && scanWasTruncated(diagnostics)) return 2;
   if (findings.some((f) => isGating(f, failOn))) return 1;
   return 0;
 }
@@ -106,7 +113,7 @@ export function selectExitCode(
  * a limit, and 56 of those reported zero findings while counting as clean.
  */
 export function scanWasTruncated(diagnostics: readonly ScanDiagnostic[]): boolean {
-  return diagnostics.some((d) => d.code === 'LIMIT_EXCEEDED');
+  return diagnostics.some((d) => d.code === 'LIMIT_EXCEEDED' || d.code === 'INPUT_DEGRADED');
 }
 
 /** The findings that actually gate, for the report's summary line. */

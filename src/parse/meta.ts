@@ -127,12 +127,69 @@ export function resolveMeta(
   return null;
 }
 
+/**
+ * Is any `_meta.ui.csp` domain array larger than the ceiling?
+ *
+ * The PANE-EXFIL and PANE-CSP families compare every declared domain against
+ * every candidate element, so their cost is `domains x elements` and a server
+ * chooses both factors. `_meta` was covered by no limit key at all; measured,
+ * 10,000 domains against 4,000 `<img>` ran 17 s.
+ *
+ * This REFUSES rather than truncating, and the difference matters. Truncating a
+ * domain list would leave rules asking "is this URL covered by connectDomains?"
+ * against a list missing entries, and the answer would flip from yes to no —
+ * manufacturing a finding on conformant markup out of a resource limit. Over-
+ * long declarations therefore make the meta undecided, never partially true.
+ */
+export function oversizedDomainField(
+  meta: UIResourceMeta | undefined | null,
+  max: number,
+): { field: string; count: number } | null {
+  const csp = meta?.csp;
+  if (!csp || typeof csp !== 'object') return null;
+  for (const field of CSP_FIELDS) {
+    const value = (csp as Record<string, unknown>)[field];
+    if (Array.isArray(value) && value.length > max) {
+      return { field, count: value.length };
+    }
+  }
+  return null;
+}
+
 /** Extract `_meta.ui` from a raw `_meta` object, if present and object-shaped. */
 export function extractUiMeta(rawMeta: unknown): UIResourceMeta | undefined {
   if (!rawMeta || typeof rawMeta !== 'object') return undefined;
   const ui = (rawMeta as Record<string, unknown>)['ui'];
   if (!ui || typeof ui !== 'object' || Array.isArray(ui)) return undefined;
   return ui as UIResourceMeta;
+}
+
+/**
+ * Is `_meta.ui` PRESENT but not an object?
+ *
+ * `extractUiMeta` returns `undefined` for an array, a string or a number, which
+ * is the same answer it gives when the key is simply absent. Those are not the
+ * same fact. Measured against 0.1.3:
+ *
+ *   _meta: { ui: { csp: { connectDomains: ["*"] } } }   → PANE-CSP-001, HIGH, gates
+ *   _meta: { ui: [{ csp: { connectDomains: ["*"] } }] } → 0 findings, exit 0, silent
+ *
+ * One bracket moved a wildcard-connect declaration from a gate-eligible finding
+ * to nothing at all, because every `requires: ['meta']` rule and every
+ * PANE-SCHEMA rule saw an absence. A malformed `_meta.ui` is a schema violation
+ * and has to be validated as one, not treated as an omission.
+ */
+export function uiMetaIsMalformed(rawMeta: unknown): boolean {
+  if (!rawMeta || typeof rawMeta !== 'object') return false;
+  if (!('ui' in (rawMeta as Record<string, unknown>))) return false;
+  const ui = (rawMeta as Record<string, unknown>)['ui'];
+  return !ui || typeof ui !== 'object' || Array.isArray(ui);
+}
+
+/** The raw `_meta.ui` value, whatever its type, for validating a malformed one. */
+export function rawUiMetaValue(rawMeta: unknown): unknown {
+  if (!rawMeta || typeof rawMeta !== 'object') return undefined;
+  return (rawMeta as Record<string, unknown>)['ui'];
 }
 
 /** The deprecated flat key, kept separate so PANE-SPEC-006/011 can compare. */

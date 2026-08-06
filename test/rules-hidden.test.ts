@@ -63,6 +63,7 @@ function ctxFor(html: string, uri = 'ui://test/view'): RuleContext {
     schemaErrors: [],
     scripts,
     rawSource: html,
+    tools: [],
     options: {},
     limits,
     diagnostic() {

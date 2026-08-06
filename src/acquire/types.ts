@@ -13,6 +13,25 @@
 
 import type { Limits } from '../types.js';
 
+/**
+ * Does this URI use the `ui://` scheme?
+ *
+ * Case-INSENSITIVE on the scheme, per RFC 3986 §3.1 — which is the position
+ * `src/rules/spec/uri.ts` already takes: `UI://server/view` names the same
+ * resource as `ui://server/view`.
+ *
+ * All three acquire paths used `startsWith('ui://')`, matching lowercase only.
+ * A hostile resource at `UI://evil/panel.html` produced zero resources, exit 0,
+ * and not even a NO_RESOURCES_FOUND diagnostic, because the entry existed and
+ * was filtered out rather than being absent. One uppercase character bypassed
+ * the whole scanner. The alternative reading — that hosts are case-sensitive
+ * here — makes PANE-SPEC-001 unreachable dead code, since the acquire filter
+ * would be stricter than the rule it feeds. Both readings required this fix.
+ */
+export function isUiUri(uri: unknown): uri is string {
+  return typeof uri === 'string' && uri.slice(0, 5).toLowerCase() === 'ui://';
+}
+
 // ---------------------------------------------------------------------------
 // Sanitisation caps
 // ---------------------------------------------------------------------------
@@ -240,3 +259,16 @@ export type ResolutionRoute =
   | 'inline-literal'
   /** (c) a readFile / open / slurp call with a literal path argument */
   | 'literal-read-call';
+
+/**
+ * Does this MIME type name an MCP App resource?
+ *
+ * Compared on the essence — type/subtype plus the `profile` parameter — with
+ * whitespace and case normalised, because `text/html; profile=mcp-app` and
+ * `text/html;profile=mcp-app` are the same media type and a server chooses the
+ * spacing. Charset and other parameters are ignored.
+ */
+export function isAppMime(mimeType: string): boolean {
+  const normalised = mimeType.toLowerCase().replace(/\s+/g, '');
+  return normalised.startsWith('text/html') && normalised.includes('profile=mcp-app');
+}

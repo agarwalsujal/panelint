@@ -34,6 +34,14 @@ export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
    * not reproduce the injection payload in full (DESIGN.md §10, log hygiene).
    */
   maxEvidenceChars: 120,
+  /**
+   * `domains x elements` is the cost of the PANE-EXFIL and PANE-CSP families,
+   * and a server picks both factors. No limit key covered `_meta` at all.
+   *
+   * The ceiling is generous against real declarations: the largest
+   * `connectDomains` in the 391-repository census is well under 100.
+   */
+  maxMetaDomains: 256,
 });
 
 export const LIMIT_KEYS = Object.keys(DEFAULT_LIMITS) as Array<keyof Limits>;

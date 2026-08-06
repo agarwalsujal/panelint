@@ -93,6 +93,7 @@ function makeCtx(html: string, meta: UIResourceMeta | null): RuleContext {
     schemaErrors: [],
     scripts: [],
     rawSource: html,
+    tools: [],
     options: {},
     limits: DEFAULT_LIMITS,
     diagnostic: () => {},

@@ -192,7 +192,16 @@ async function runScan(
   });
 
   // ── Report ─────────────────────────────────────────────────────────────
-  const diagnostics = [...set.diagnostics, ...analysis.diagnostics];
+  // `suppression.diagnostics` carries the tamper evidence and was computed and
+  // then dropped on the floor: INLINE_SUPPRESSION_IGNORED (which says "would
+  // have hidden N findings"), INLINE_SUPPRESSION_MALFORMED, and
+  // CONFIG_OVERRIDE_REFUSED all vanished. A scanned tree attempting to silence
+  // the scanner is precisely the fact an operator needs to see.
+  const diagnostics = [
+    ...set.diagnostics,
+    ...analysis.diagnostics,
+    ...suppression.diagnostics,
+  ];
   const errors = [...set.errors, ...analysis.errors];
 
   const report: ScanReport = {
