@@ -30,6 +30,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:corpus": "vitest run test/corpus.test.ts",
+    "test:never-fire": "vitest run test/never-fire.test.ts",
+    "test:pack": "node scripts/pack-smoke.mjs",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [

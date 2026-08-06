@@ -1,0 +1,91 @@
+# Panelint's own CI.
+#
+# The `gate` job is split out from `test` deliberately. Both run inside
+# `npm test`, so splitting them buys no coverage — it buys a named, separately
+# required check. The reference-corpus gate and the never-fire guards are the
+# reason anyone should trust a finding from this tool, and a reviewer looking at
+# a PR should be able to see that they passed without opening a log.
+#
+# See CONTRIBUTING.md, which documents these as the two commands a contributor
+# runs before opening a PR.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A scanner has no business writing to the repository it is built in.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.10.0 is the floor declared in package.json engines. Testing the
+        # floor exactly is the point — "20.x" would silently drift upward and
+        # stop proving the floor works.
+        node: ['20.10.0', '22', '24']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # Never `npm install` in CI — the lockfile is the control. Dependencies
+      # are exact-pinned, and `ci` is what enforces that at install time.
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  gate:
+    name: false-positive gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # A finding on conformant code is the highest-severity bug this project
+      # has. These two commands are what make that claim checkable.
+      - name: Reference corpus — no rule may gate on a conformant server
+        run: npm run test:corpus
+
+      - name: Never-fire guards — the spec-mandated patterns
+        run: npm run test:never-fire
+
+  pack:
+    name: published artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Packs, installs into an empty directory, and runs the CLI from there.
+      # `npm test` proves the source works; only this proves the tarball does.
+      - run: npm run test:pack
