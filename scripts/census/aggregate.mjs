@@ -255,8 +255,75 @@ server or a vendor. Every number here describes public source code as it stood w
 
 // The guard. A repository name in the tracked file is a disclosure incident,
 // so it is checked rather than trusted.
-const names = rows.map((r) => r.repo.replace('__', '/'));
-const leaked = names.filter((n) => publicDoc.includes(n) || publicDoc.includes(n.split('/')[0]));
+// Built from every file on disk, not from `rows` — `rows` drops scan failures,
+// so a scan-failed repository's name was never even a candidate. And matched on
+// word boundaries, case-insensitively, against the owner, the repo, the
+// `owner/repo` pair and the `owner__repo` slug: the previous version checked
+// `owner/repo` and `owner` but never the repo name alone, so a sentence naming
+// `pdf-server` or `wiki-explorer-server` would have sailed through.
+//
+// Owner-only matching is skipped for very short names. GitHub allows
+// one-character logins, and a bare-substring check on `a` blocks every write —
+// a guard that fires on everything gets deleted rather than fixed.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Words this document writes about the domain, which are also real repository
+ * names.
+ *
+ * The corpus genuinely contains repositories called `mcp` and `mcp-app`, and
+ * the document contains `text/html;profile=mcp-app` in its methodology section.
+ * Matching a bare repository name against the prose therefore fires on the
+ * document's own vocabulary and blocks every write.
+ *
+ * A guard that always fires gets deleted rather than fixed, so bare-name
+ * matching skips these. The unambiguous `owner/repo` and `owner__repo` forms
+ * are still checked for every repository without exception — those cannot occur
+ * by accident, and they are what an actual leak would look like.
+ */
+const DOC_VOCABULARY = new Set([
+  'mcp',
+  'mcp-app',
+  'mcp-apps',
+  'mcp-server',
+  'panelint',
+  'census',
+  'docs',
+  'scan',
+  'rules',
+  'node',
+  'json',
+  'sarif',
+  'html',
+  'server',
+  'servers',
+  'ui',
+]);
+
+const always = new Set();
+const bare = new Set();
+for (const file of files) {
+  const slug = file.replace(/\.json$/, '');
+  const idx = slug.indexOf('__');
+  if (idx < 0) continue;
+  const owner = slug.slice(0, idx);
+  const repo = slug.slice(idx + 2);
+  if (!owner || !repo) continue;
+
+  // Unambiguous. Always checked.
+  always.add(slug);
+  always.add(`${owner}/${repo}`);
+
+  // Bare tokens, checked only when they are distinctive enough to mean
+  // something. GitHub allows one-character logins.
+  for (const token of [repo, owner]) {
+    if (token.length >= 4 && !DOC_VOCABULARY.has(token.toLowerCase())) bare.add(token);
+  }
+}
+
+const leaked = [...always, ...bare].filter((n) =>
+  new RegExp(`\\b${escapeRe(n)}\\b`, 'i').test(publicDoc),
+);
 if (leaked.length > 0) {
   console.error(`REFUSING to write ${PUBLIC_OUT}: it contains repository names`);
   console.error(leaked.slice(0, 5).join(', '));

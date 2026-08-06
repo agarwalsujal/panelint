@@ -86,6 +86,14 @@ const EXCLUDE = [
   /\bawesome-mcp\b/i,
   /\bmcp-?inspector\b/i,
   /\bmcp-?spec\b/i,
+  // Panelint itself. `fixtures/malicious/` is a corpus of deliberate attacks,
+  // so scanning our own tree contributes a CRITICAL finding that is a test
+  // asset, not an ecosystem observation — it was 1 of the 3 gate-eligible
+  // repositories in the first run, on a base of 35. A scanner that counts its
+  // own adversarial fixtures in its published population statistic is
+  // measuring itself.
+  /^agarwalsujal\/panelint$/i,
+  /\bpanelint\b/i,
 ];
 
 function gh(args) {
@@ -137,6 +145,14 @@ function record(item, queryId) {
   if (!full) return;
   if (EXCLUDE.some((re) => re.test(full))) return;
 
+  // A fork inflates the population with a copy of a tree already counted, and
+  // the census is published as a statement about public source. An
+  // authenticated code search can also return private repositories the token
+  // can read, which the generated document explicitly claims it does not
+  // describe. Both were captured and neither was filtered.
+  if (item.repository?.fork === true) return;
+  if (item.repository?.private === true) return;
+
   const existing = repos.get(full) ?? {
     fullName: full,
     signals: [],
@@ -155,7 +171,15 @@ function record(item, queryId) {
 if (existsSync(OUT)) {
   const prior = JSON.parse(readFileSync(OUT, 'utf8'));
   for (const r of prior.repos ?? []) repos.set(r.fullName, r);
-  console.log(`resuming from ${repos.size} repositories already recorded`);
+  // Carry the prior run's truncation record forward too. Rebuilding it from
+  // scratch on every resume meant a run that died after recording three
+  // truncated partitions, resumed and dying after one, wrote a corpus claiming
+  // a single truncation — understating exactly the thing this file exists to
+  // report honestly.
+  for (const t of prior.truncatedPartitions ?? []) truncatedPartitions.push(t);
+  console.log(
+    `resuming from ${repos.size} repositories and ${truncatedPartitions.length} recorded truncations`,
+  );
 }
 
 for (const { id, q } of QUERIES) {
@@ -163,6 +187,7 @@ for (const { id, q } of QUERIES) {
     const full = language ? `${q} language:${language}` : q;
     let total = null;
     let seen = 0;
+    let incomplete = false;
 
     for (let page = 1; page <= MAX_PAGES; page++) {
       let res;
@@ -174,6 +199,12 @@ for (const { id, q } of QUERIES) {
         const msg = String(e.stderr ?? e.message);
         if (!/422|Only the first 1000/.test(msg)) {
           console.log(`  ${id}/${language ?? 'any'} page ${page}: ${msg.split('\n')[0]}`);
+          // A 403 secondary rate limit or a 5xx mid-partition leaves the
+          // partition incomplete at a page count far below the 1000-result
+          // ceiling, so the check after this loop would not record it and the
+          // corpus would silently overstate its own coverage. That is the exact
+          // failure this script's header says is worse than a smaller census.
+          incomplete = true;
         }
         break;
       }
@@ -186,8 +217,15 @@ for (const { id, q } of QUERIES) {
       if (items.length < PER_PAGE) break;
     }
 
-    if (total !== null && total > seen && seen >= MAX_PAGES * PER_PAGE) {
-      truncatedPartitions.push({ query: id, language: language ?? 'any', total, retrieved: seen });
+    const hitCeiling = seen >= MAX_PAGES * PER_PAGE;
+    if (incomplete || (total !== null && total > seen && hitCeiling)) {
+      truncatedPartitions.push({
+        query: id,
+        language: language ?? 'any',
+        total,
+        retrieved: seen,
+        reason: incomplete ? 'request failed mid-partition' : 'hit the 1000-result ceiling',
+      });
     }
     if (total) {
       console.log(
