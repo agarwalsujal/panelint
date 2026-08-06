@@ -1,6 +1,7 @@
 {
   "source": "https://github.com/modelcontextprotocol/ext-apps",
-  "ref": "refs/heads/main",
+  "ref": "92f46a574568a3ddac7600343b7d3c4c4ed7b588",
+  "refNote": "Pinned commit, not a branch. docs/DESIGN.md §6 requires it: the corpus is a must-not-fire gate over a public repository, so a moving ref means anyone who can land a PR upstream can change what this gate tests. Was 'refs/heads/main'. Verified by re-fetching three files at this SHA and comparing sha256 against the entries below; the commit (2026-07-23) predates the 2026-08-06 fetch, so the pin is exact.",
   "fetchedAt": "2026-08-06",
   "note": "Verbatim mcp-app.html from each example server. These are the REAL reference servers, not reproductions. Several are Vite entry stubs (<400 bytes); the substantive ones are what give this corpus its power.",
   "files": {

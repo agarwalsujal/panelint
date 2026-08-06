@@ -1,0 +1,36 @@
+{
+  "manifestVersion": 2,
+  "provenance": {
+    "kind": "synthetic",
+    "statement": "These are NOT captures of anyone's server. They are hand-authored captures in the current panelintCapture format, reproducing the conformant server shapes recorded in docs/RULES.md § Measured false-positive pass. They carry less evidential weight than fixtures/reference/upstream/, which holds real files from modelcontextprotocol/ext-apps — a fixture written by the same person who wrote the rules can encode the rules' own assumptions. They exist because the upstream corpus is HTML-only, so 35 of 93 rules would otherwise never run against conformant input anywhere in the suite.",
+    "shapesReproduced": "docs/RULES.md § Measured false-positive pass: 6 of 8 reference servers declare no _meta.ui at all; 2 declare csp; 0 declare domain; 0 declare prefersBorder; 0 put _meta.ui on a read-level content item; every SDK-built tool dual-writes the flat ui/resourceUri."
+  },
+  "rule": "Any SPEC, SCHEMA or RISK finding on a fixture in this set FAILS CI, at any severity. Any skipped rule also fails: a capture that stopped supplying meta would report zero findings and read as a pass.",
+  "fixtures": [
+    {
+      "path": "no-meta.json",
+      "shape": "The 6-of-8 majority shape. Declares no _meta.ui on the resource at all, so the mandated restrictive default CSP applies. The tool dual-writes _meta.ui.resourceUri and the deprecated flat _meta[\"ui/resourceUri\"], exactly as the official SDK emits it.",
+      "guards": [
+        "PANE-SPEC-006 must not flag the dual-written flat key when the modern one is present",
+        "PANE-SCHEMA rules must not treat the extra _meta key as an unknown-key violation — MCP _meta is explicitly extensible"
+      ]
+    },
+    {
+      "path": "declared-csp.json",
+      "shape": "The 2-of-8 shape. Declares _meta.ui.csp.connectDomains and preferredFrameSize, identically at list and read level. The HTML actually fetches the declared origin, so a declared-but-unused finding would be wrong.",
+      "guards": [
+        "PANE-CSP-009 must not fire when the declared connect origin is genuinely contacted",
+        "PANE-CSP-006 must not fire when every loaded origin is covered by a declaration",
+        "'unsafe-inline' is in the spec's mandated default policy and must never be flagged"
+      ]
+    },
+    {
+      "path": "list-meta-only.json",
+      "shape": "The idiomatic registerAppResource shape: _meta.ui present on the LIST entry and absent from the read-level content item. This is what the SDK produces, and an absent read-level policy is not a divergence from the list-level one.",
+      "guards": [
+        "PANE-SPEC-010 must not read an absent read-level _meta.ui as a mismatch — this is never-fire guard 5",
+        "PANE-INTEGRITY-001 must not fire on a CDN stylesheet that carries integrity and crossorigin"
+      ]
+    }
+  ]
+}

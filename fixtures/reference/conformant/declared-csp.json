@@ -1,0 +1,90 @@
+{
+  "panelintCapture": 1,
+  "capturedAt": "2026-08-06T00:00:00.000Z",
+  "initialize": {
+    "protocolVersion": "2025-11-25",
+    "serverInfo": {
+      "name": "conformant-declared-csp",
+      "version": "2.1.0"
+    },
+    "capabilities": {
+      "resources": {
+        "listChanged": false
+      },
+      "tools": {
+        "listChanged": false
+      },
+      "extensions": {
+        "io.modelcontextprotocol/ui": {
+          "mimeTypes": [
+            "text/html;profile=mcp-app"
+          ]
+        }
+      }
+    }
+  },
+  "resourcesList": [
+    {
+      "uri": "ui://conformant/report",
+      "name": "report",
+      "mimeType": "text/html;profile=mcp-app",
+      "_meta": {
+        "ui": {
+          "csp": {
+            "connectDomains": [
+              "https://api.conformant-server.test"
+            ]
+          },
+          "preferredFrameSize": [
+            "640px",
+            "480px"
+          ]
+        }
+      }
+    }
+  ],
+  "resourcesRead": [
+    {
+      "uri": "ui://conformant/report",
+      "contents": [
+        {
+          "uri": "ui://conformant/report",
+          "mimeType": "text/html;profile=mcp-app",
+          "text": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Report</title>\n<style>\n  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; }\n  table { border-collapse: collapse; width: 100%; }\n  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid currentColor; }\n</style>\n</head>\n<body>\n<main>\n  <h1>Report</h1>\n  <table><thead><tr><th scope=\"col\">Region</th><th scope=\"col\">Total</th></tr></thead>\n  <tbody id=\"rows\"></tbody></table>\n</main>\n<script>\n  async function load() {\n    const res = await fetch('https://api.conformant-server.test/v1/totals');\n    const rows = await res.json();\n    const body = document.getElementById('rows');\n    for (const row of rows) {\n      const tr = document.createElement('tr');\n      const region = document.createElement('td');\n      region.textContent = row.region;\n      const total = document.createElement('td');\n      total.textContent = row.total;\n      tr.append(region, total);\n      body.append(tr);\n    }\n  }\n  load();\n</script>\n</body>\n</html>\n",
+          "_meta": {
+            "ui": {
+              "csp": {
+                "connectDomains": [
+                  "https://api.conformant-server.test"
+                ]
+              },
+              "preferredFrameSize": [
+                "640px",
+                "480px"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "toolsList": [
+    {
+      "name": "show_report",
+      "description": "Render the regional totals report.",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://conformant/report",
+          "visibility": [
+            "model",
+            "app"
+          ]
+        },
+        "ui/resourceUri": "ui://conformant/report"
+      }
+    }
+  ]
+}

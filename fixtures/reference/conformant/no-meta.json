@@ -1,0 +1,64 @@
+{
+  "panelintCapture": 1,
+  "capturedAt": "2026-08-06T00:00:00.000Z",
+  "initialize": {
+    "protocolVersion": "2025-11-25",
+    "serverInfo": {
+      "name": "conformant-no-meta",
+      "version": "1.0.0"
+    },
+    "capabilities": {
+      "resources": {
+        "listChanged": false
+      },
+      "tools": {
+        "listChanged": false
+      },
+      "extensions": {
+        "io.modelcontextprotocol/ui": {
+          "mimeTypes": [
+            "text/html;profile=mcp-app"
+          ]
+        }
+      }
+    }
+  },
+  "resourcesList": [
+    {
+      "uri": "ui://conformant/counter",
+      "name": "counter",
+      "mimeType": "text/html;profile=mcp-app"
+    }
+  ],
+  "resourcesRead": [
+    {
+      "uri": "ui://conformant/counter",
+      "contents": [
+        {
+          "uri": "ui://conformant/counter",
+          "mimeType": "text/html;profile=mcp-app",
+          "text": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Counter</title>\n<style>\n  :root { color-scheme: light dark; }\n  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; }\n  .count { font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums; }\n  button { font: inherit; padding: 6px 14px; border-radius: 6px; cursor: pointer; }\n</style>\n</head>\n<body>\n<main>\n  <h1>Counter</h1>\n  <p class=\"count\" id=\"value\" aria-live=\"polite\">0</p>\n  <button id=\"inc\" type=\"button\">Increment</button>\n</main>\n<script>\n  const value = document.getElementById('value');\n  let n = 0;\n  document.getElementById('inc').addEventListener('click', () => {\n    n += 1;\n    value.textContent = String(n);\n  });\n</script>\n</body>\n</html>\n"
+        }
+      ]
+    }
+  ],
+  "toolsList": [
+    {
+      "name": "show_counter",
+      "description": "Show the counter panel.",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://conformant/counter",
+          "visibility": [
+            "model",
+            "app"
+          ]
+        },
+        "ui/resourceUri": "ui://conformant/counter"
+      }
+    }
+  ]
+}

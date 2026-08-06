@@ -36,6 +36,7 @@ import { join, dirname } from 'node:path';
 import { analyzeResourceSet } from '../src/analyze.js';
 import { selectRules } from '../src/rules/registry.js';
 import { sha256Resource } from '../src/acquire/hash.js';
+import { loadCapture } from '../src/acquire/capture.js';
 import { isGating } from '../src/exit.js';
 import type { Finding, ResourceSet } from '../src/types.js';
 
@@ -191,5 +192,109 @@ describe('the corpus scan is not vacuous', () => {
 
   it('runs the full ruleset, not a subset', () => {
     expect(selectRules({ experimental: true }).length).toBe(93);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The half the upstream corpus structurally cannot cover.
+// ---------------------------------------------------------------------------
+
+/**
+ * `fixtures/reference/conformant/` — conformant *server* shapes, not markup.
+ *
+ * The upstream corpus is HTML files. `scan()` above builds each one with
+ * `tools: []` and no `_meta`, because there is nothing else to build it from.
+ * So the 35 rules that require meta, tools, or capabilities never run against
+ * conformant input anywhere in this suite — and three of the five hard-guarded
+ * never-fire patterns live in exactly that region: `'unsafe-inline'` in the
+ * mandated default CSP, the SDK-dual-written `_meta["ui/resourceUri"]`, and
+ * PANE-SPEC-010 list/read divergence. `test/never-fire.test.ts` covers those
+ * against synthetic literals, which is not the same as covering them against a
+ * whole conformant server.
+ *
+ * **Provenance, stated plainly: these are synthetic.** They are hand-authored
+ * captures in the current format, reproducing the shapes recorded in
+ * docs/RULES.md § Measured false-positive pass — six of eight reference servers
+ * declare no `_meta.ui` at all, two declare `csp`, none declare `domain`, and
+ * every SDK-built tool dual-writes the flat `ui/resourceUri`. They are NOT
+ * captures of anyone's server, and they carry less evidential weight than
+ * `upstream/` because a fixture written by the same person who wrote the rules
+ * can accidentally encode the rules' assumptions. They exist to cover a region
+ * that would otherwise have no conformant coverage at all.
+ *
+ * They replace `fixtures/reference/{MANIFEST.json,must-not-fire/,measured/}`,
+ * which were written in a superseded capture format that `validateCapture`
+ * refuses outright — unloadable by any code path, and describing a corpus that
+ * is not the one gating CI.
+ */
+const CONFORMANT = join(HERE, '..', 'fixtures', 'reference', 'conformant');
+
+const conformantFiles = readdirSync(CONFORMANT)
+  .filter((f) => f.endsWith('.json') && f !== 'MANIFEST.json')
+  .sort();
+
+function scanConformant(file: string) {
+  const set = loadCapture(join(CONFORMANT, file));
+  return analyzeResourceSet(set, selectRules({ experimental: true }));
+}
+
+describe('G2 — no rule gates on a conformant server shape', () => {
+  it('has fixtures to run', () => {
+    expect(conformantFiles.length).toBeGreaterThanOrEqual(3);
+  });
+
+  for (const file of conformantFiles) {
+    it(`${file}: no finding gates`, () => {
+      const { findings } = scanConformant(file);
+      const gating = findings.filter((f: Finding) => isGating(f, 'INFO'));
+      expect(
+        gating.map((f) => `${f.ruleId} ${f.severity} ${f.confidence}`),
+        `${file} produced a gating finding`,
+      ).toEqual([]);
+    });
+
+    it(`${file}: no SPEC, SCHEMA or RISK finding at any severity`, () => {
+      // Stricter than the gate, matching the upstream must-not-fire rule. A
+      // RISK finding here is a rule reading conformant server structure as
+      // risky, which is the failure GOALS.md G2 exists to prevent.
+      const { findings } = scanConformant(file);
+      const classed = findings.filter((f: Finding) => f.class !== 'INFO');
+      expect(
+        classed.map((f) => `${f.ruleId} (${f.class}/${f.severity})`),
+        `${file} produced a non-INFO finding`,
+      ).toEqual([]);
+    });
+  }
+});
+
+describe('the conformant captures are not vacuous', () => {
+  /**
+   * The trap: a capture that failed to populate `_meta`, tools, or capabilities
+   * would skip the very rules this set exists to cover, report zero findings,
+   * and read as a pass. Assert the rules RAN.
+   */
+  for (const file of conformantFiles) {
+    it(`${file}: skips no rule for missing meta, tools, or capabilities`, () => {
+      const { skipped } = scanConformant(file);
+      expect(
+        skipped.map((s) => s.message),
+        `${file} skipped rules — the capture is not supplying what it should`,
+      ).toEqual([]);
+    });
+  }
+
+  it('covers the region the upstream HTML corpus cannot', () => {
+    // The upstream corpus builds resources with tools: [] and no _meta, so
+    // these rule families never see conformant input there. If this ever drops
+    // to zero, the conformant set has stopped doing its job.
+    const ran = scanConformant(conformantFiles[0]!);
+    expect(ran.skipped).toEqual([]);
+
+    const metaDependent = selectRules({ experimental: true }).filter((r) =>
+      (r.requires ?? []).some((req: string) =>
+        ['meta', 'tools', 'capabilities'].includes(req),
+      ),
+    );
+    expect(metaDependent.length).toBeGreaterThan(20);
   });
 });

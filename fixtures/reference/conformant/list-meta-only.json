@@ -1,0 +1,77 @@
+{
+  "panelintCapture": 1,
+  "capturedAt": "2026-08-06T00:00:00.000Z",
+  "initialize": {
+    "protocolVersion": "2025-11-25",
+    "serverInfo": {
+      "name": "conformant-list-meta-only",
+      "version": "0.4.2"
+    },
+    "capabilities": {
+      "resources": {
+        "listChanged": false
+      },
+      "tools": {
+        "listChanged": false
+      },
+      "extensions": {
+        "io.modelcontextprotocol/ui": {
+          "mimeTypes": [
+            "text/html;profile=mcp-app"
+          ]
+        }
+      }
+    }
+  },
+  "resourcesList": [
+    {
+      "uri": "ui://conformant/board",
+      "name": "board",
+      "mimeType": "text/html;profile=mcp-app",
+      "_meta": {
+        "ui": {
+          "csp": {
+            "connectDomains": [
+              "https://api.conformant-server.test"
+            ],
+            "resourceDomains": [
+              "https://cdn.conformant-server.test"
+            ]
+          },
+          "prefersBorder": true
+        }
+      }
+    }
+  ],
+  "resourcesRead": [
+    {
+      "uri": "ui://conformant/board",
+      "contents": [
+        {
+          "uri": "ui://conformant/board",
+          "mimeType": "text/html;profile=mcp-app",
+          "text": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Board</title>\n<link rel=\"stylesheet\" href=\"https://cdn.conformant-server.test/board.css\" integrity=\"sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC\" crossorigin=\"anonymous\">\n<style>\n  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; }\n</style>\n</head>\n<body>\n<main>\n  <h1>Board</h1>\n  <ul id=\"items\"></ul>\n</main>\n<script>\n  fetch('https://api.conformant-server.test/v1/items')\n    .then((r) => r.json())\n    .then((items) => {\n      const list = document.getElementById('items');\n      for (const item of items) {\n        const li = document.createElement('li');\n        li.textContent = item.label;\n        list.append(li);\n      }\n    });\n</script>\n</body>\n</html>\n"
+        }
+      ]
+    }
+  ],
+  "toolsList": [
+    {
+      "name": "show_board",
+      "description": "Render the board.",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://conformant/board",
+          "visibility": [
+            "model",
+            "app"
+          ]
+        },
+        "ui/resourceUri": "ui://conformant/board"
+      }
+    }
+  ]
+}
