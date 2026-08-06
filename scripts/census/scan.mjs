@@ -71,9 +71,22 @@ for (const name of trees) {
   try {
     // --experimental so the census can measure experimental rules' false
     // positive rate before any of them is promoted. They cannot gate anyway.
+    //
+    // --no-inline-suppressions because these are untrusted third-party trees,
+    // not the operator's own checkout. Directory mode trusts panelint-disable
+    // comments by default; here the comment sits in someone else's repository,
+    // so a single `<!-- panelint-disable-file -->` would drop that repo's
+    // findings from the census. The GitHub Action passes this flag for the same
+    // reason (action.yml).
     const stdout = execFileSync(
       process.execPath,
-      [CLI, 'scan', dir, '--format', 'json', '--experimental', '--fail-on', 'critical'],
+      [
+        CLI, 'scan', dir,
+        '--format', 'json',
+        '--experimental',
+        '--fail-on', 'critical',
+        '--no-inline-suppressions',
+      ],
       {
         encoding: 'utf8',
         maxBuffer: 256 * 1024 * 1024,

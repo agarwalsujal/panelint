@@ -622,6 +622,24 @@ describe('PANE-SPEC-010 — list-level and read-level _meta.ui diverge', () => {
     expect(paneSpec010.check(ctxFor({ metaFromList: list, metaFromRead: read })).findings).toEqual([]);
   });
 
+  it('is silent when the read-level wildcard is NARROWER than the list-level wildcard', () => {
+    // A conformant server that tightens its policy at read time: `*.api.example.com`
+    // is a strict subset of `*.example.com` (every host it matches also ends in
+    // `.example.com`). A read wildcard used to skip the coverage test entirely and
+    // be declared "broader", gate-failing this conformant server at RISK/HIGH/CERTAIN.
+    const list = { csp: { connectDomains: ['https://*.example.com'] } };
+    const read = { csp: { connectDomains: ['https://*.api.example.com'] } };
+    expect(paneSpec010.check(ctxFor({ metaFromList: list, metaFromRead: read })).findings).toEqual([]);
+  });
+
+  it('still fires when a read-level wildcard is NOT covered by the list-level policy', () => {
+    // `*.evil.com` is not covered by `*.example.com`; the enforced policy really
+    // is broader than what the host reviewed, so the finding must survive the fix.
+    const list = { csp: { connectDomains: ['https://*.example.com'] } };
+    const read = { csp: { connectDomains: ['https://*.evil.com'] } };
+    expect(paneSpec010.check(ctxFor({ metaFromList: list, metaFromRead: read })).findings.length).toBeGreaterThan(0);
+  });
+
   it('fires when the read-level CSP adds an origin the list-level does not permit', () => {
     const read = JSON.parse(fixture('malicious/spec/read-broader-meta.json')) as UIResourceMeta;
     const list = { csp: { connectDomains: ['https://api.example.com'] } };

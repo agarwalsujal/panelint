@@ -378,6 +378,12 @@ function resolveByInlineLiteral(decl: DeclaredUri, files: Map<string, string>): 
   const source = files.get(decl.declaredIn);
   if (!source) return null;
 
+  // The lazy `[\s\S]{0,200000}?` in HTML_LITERAL_RE scans up to 200 KB from
+  // every `"<html` looking for a close tag. In a file with many opens and no
+  // close, that is quadratic (512 KB of `'"<html '` → 16s). A match is
+  // impossible without a close tag, so its absence is a linear-time bail.
+  if (!/<\/(?:html|body)>/i.test(source)) return null;
+
   HTML_LITERAL_RE.lastIndex = 0;
   const match = HTML_LITERAL_RE.exec(source);
   if (!match?.[1]) return null;

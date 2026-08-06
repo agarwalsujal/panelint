@@ -95,8 +95,15 @@ function resolve(value: string, props: Map<string, string>, depth = 0): Rgb | nu
 /** Pull a colour out of a `background` shorthand, refusing when an image is involved. */
 function backgroundColorToken(value: string): string | null {
   const v = value.trim();
+  // A colour token is a handful of characters. A `background` value longer than
+  // this carries no colour worth resolving, and refusing it early keeps the
+  // tokenizer below off a pathological run of input: `[a-z-]+\(` used to
+  // backtrack across a long run of `-` looking for a `(` that never came
+  // (200 KB of dashes → 19s). Anchoring the function branch to a leading letter
+  // (below) removes the backtracking; this cap bounds the work regardless.
+  if (v.length > 4096) return null;
   if (/url\(|gradient\(/i.test(v)) return null;
-  const tokens = v.match(/(#[0-9a-f]{3,8}|[a-z-]+\([^()]*(?:\([^()]*\)[^()]*)*\)|[a-z]+)/gi) ?? [];
+  const tokens = v.match(/(#[0-9a-f]{3,8}|[a-z][a-z-]*\([^()]*(?:\([^()]*\)[^()]*)*\)|[a-z]+)/gi) ?? [];
   for (const t of tokens) {
     if (/^(no-repeat|repeat|repeat-x|repeat-y|fixed|scroll|local|center|top|bottom|left|right|cover|contain|border-box|padding-box|content-box|space|round)$/i.test(t)) {
       continue;
