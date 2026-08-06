@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseHtml, selectOne } from '../src/parse/html.js';
+import { parseHtml, selectOne, selectAll } from '../src/parse/html.js';
 import { buildStyleIndex } from '../src/parse/style-index.js';
 import { DEFAULT_LIMITS } from '../src/limits.js';
 
@@ -140,5 +140,68 @@ describe('StyleIndex — limits', () => {
     const { dom } = parseHtml(`<style>${rules}</style><div class="c1">x</div>`, DEFAULT_LIMITS);
     const styles = buildStyleIndex(dom, { ...DEFAULT_LIMITS, selectorMatchBudget: 5 });
     expect(styles.diagnostics.some((d) => d.code === 'LIMIT_EXCEEDED')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Negated stateful pseudo-classes.
+// ---------------------------------------------------------------------------
+
+/**
+ * A stateful pseudo-class describes a state the resting document is not in, so
+ * `.x:hover{display:none}` hides nothing at rest. **Negated, it inverts** —
+ * `:not(:hover)` is true at rest, so the declaration applies in the rendered
+ * document.
+ *
+ * Classification treated both the same and dropped the rule from the index
+ * entirely, with no finding and no undecided note. Thirteen characters disabled
+ * the PANE-HIDDEN family, which by the header of the module under test is a
+ * reportable vulnerability rather than a limitation.
+ *
+ * There were two bugs stacked here. Classification was one. The other was that
+ * css-select KNOWS `:hover` (and answers false) but THROWS on `:focus`,
+ * `:target` and `:focus-visible` — and the match loop swallows the throw — so
+ * fixing classification alone left half the family still silent.
+ */
+describe('a negated stateful pseudo-class applies at rest', () => {
+  const hides = (selector: string): boolean => {
+    const html = `<!doctype html><html><head><style>${selector}{display:none}</style></head><body><p class="s">text</p></body></html>`;
+    const parsed = parseHtml(html, 'ui://t/a', DEFAULT_LIMITS);
+    const index = buildStyleIndex(parsed.dom, DEFAULT_LIMITS, 'ui://t/a');
+    const el = selectAll('p.s', parsed.dom)[0]!;
+    return index.candidatesFor(el, 'display').some((c) => c.value === 'none');
+  };
+
+  for (const state of [
+    'hover',
+    'focus',
+    'focus-visible',
+    'focus-within',
+    'active',
+    'visited',
+    'target',
+    'checked',
+  ]) {
+    it(`binds a declaration behind :not(:${state})`, () => {
+      expect(hides(`.s:not(:${state})`), `:not(:${state}) was dropped`).toBe(true);
+    });
+  }
+
+  it('still excludes a positive stateful pseudo-class', () => {
+    expect(hides('.s:hover')).toBe(false);
+  });
+
+  it('still excludes a doubly-negated one, which is positive again', () => {
+    expect(hides('.s:not(:not(:hover))')).toBe(false);
+  });
+
+  it('binds when the negation also constrains by class', () => {
+    // `:not(.a:hover)` is not purely stateful, so the negation is kept rather
+    // than dropped. Over-inclusion is safe here — candidatesFor is additive.
+    expect(hides('.s:not(.a:hover)')).toBe(true);
+  });
+
+  it('binds through a negated ancestor', () => {
+    expect(hides('html:not(:hover) .s')).toBe(true);
   });
 });

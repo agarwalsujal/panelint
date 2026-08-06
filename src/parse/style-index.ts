@@ -405,12 +405,89 @@ interface Classified {
  * rule styles a pseudo-element rather than the node it originates from. Binding
  * either to the node would report plainly visible text as hidden.
  */
+/**
+ * How many `:not()` wrappers enclose this node.
+ *
+ * A stateful pseudo-class describes a state the resting document is not in, so
+ * `.x:hover { display: none }` does not hide anything at rest. **Negated, it
+ * inverts**: `:not(:hover)` is TRUE at rest, so `.x:not(:hover){display:none}`
+ * hides the element in the rendered document.
+ *
+ * Treating a negated stateful pseudo the same as a positive one dropped the
+ * whole declaration from the index, silently. Measured: `.s{display:none}` on
+ * text-bearing content produced PANE-HIDDEN-001; `.s:not(:hover){display:none}`
+ * produced zero findings, zero undecided, exit 0 — and the same held for
+ * `:focus`, `:target`, `:visited`, `:active` across every hiding declaration in
+ * the family. Thirteen characters disabled the product's highest-value rule
+ * class, which by SECURITY.md §1 is a reportable vulnerability in Panelint
+ * rather than a documented limitation.
+ *
+ * Parity, not presence: `:not(:not(:hover))` is `:hover` again and must stay
+ * excluded.
+ */
+function negationDepth(node: { parent?: unknown }): number {
+  let depth = 0;
+  let current = node.parent as { type?: string; value?: string; parent?: unknown } | undefined;
+  while (current) {
+    if (current.type === 'pseudo' && current.value?.replace(/^::?/, '').toLowerCase() === 'not') {
+      depth += 1;
+    }
+    current = current.parent as typeof current;
+  }
+  return depth;
+}
+
+interface ParserNode {
+  type?: string;
+  value?: string;
+  nodes?: ParserNode[];
+  parent?: ParserNode;
+  remove?: () => void;
+}
+
+/** The nearest enclosing `:not()` pseudo, skipping the Selector nodes between. */
+function nearestNegation(node: { parent?: unknown }): ParserNode | null {
+  let current = node.parent as ParserNode | undefined;
+  while (current) {
+    if (current.type === 'pseudo' && current.value?.replace(/^::?/, '').toLowerCase() === 'not') {
+      return current;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * Does this `:not()` contain nothing but stateful pseudo-classes?
+ *
+ * Only then is dropping it equivalent at rest. `:not(.a:hover)` also constrains
+ * by class, so removing it would widen the match by more than the state.
+ */
+function allStateful(negation: ParserNode): boolean {
+  const selectors = negation.nodes ?? [];
+  if (selectors.length === 0) return false;
+  return selectors.every((sel) => {
+    const parts = sel.nodes ?? [];
+    return (
+      parts.length > 0 &&
+      parts.every(
+        (p) =>
+          p.type === 'pseudo' &&
+          STATEFUL_PSEUDO.has(String(p.value).replace(/^::?/, '').toLowerCase()),
+      )
+    );
+  });
+}
+
 function classifySelector(selector: string): Classified {
   let applies = true;
   let matchSelector = selector;
 
   try {
     const processed = selectorParser((root) => {
+      /** `:not()` wrappers to delete once the walk finishes. */
+      const dropNegations: { remove: () => void }[] = [];
+
       root.walk((node) => {
         if (node.type === 'pseudo') {
           const name = node.value.replace(/^::?/, '').toLowerCase();
@@ -419,10 +496,38 @@ function classifySelector(selector: string): Classified {
             return;
           }
           if (STATEFUL_PSEUDO.has(name)) {
-            applies = false;
+            if (negationDepth(node) % 2 === 0) {
+              applies = false;
+              return;
+            }
+            // Negated, so it holds at rest and the declaration applies. The
+            // selector still has to be one css-select can evaluate: it knows
+            // `:hover` (and answers false) but THROWS on `:focus`,
+            // `:focus-visible`, `:target` and the rest — and that throw is
+            // swallowed by the match loop, which is why `:not(:focus)` was
+            // silent even after classification was fixed.
+            //
+            // Dropping a `:not()` whose contents are entirely stateful widens
+            // the match to exactly the set it selects at rest. Widening is safe
+            // by this module's design — candidatesFor() is additive and a
+            // resolved declaration may add a finding, never remove one.
+            // The `:not` is not the direct parent — postcss-selector-parser
+            // puts a Selector node between them — so walk up to it.
+            const negation = nearestNegation(node);
+            if (negation && typeof negation.remove === 'function' && allStateful(negation)) {
+              dropNegations.push(negation as { remove: () => void });
+            }
           }
         }
       });
+
+      for (const negation of dropNegations) {
+        try {
+          negation.remove();
+        } catch {
+          // Leave the selector as-is; the match loop still handles a throw.
+        }
+      }
     }).processSync(selector);
     matchSelector = processed;
   } catch {
