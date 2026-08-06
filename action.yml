@@ -92,7 +92,7 @@ inputs:
       a security tool that silently changes its rule set between runs turns a
       green check into a moving target.
     required: false
-    default: '0.1.1'
+    default: '0.1.2'
   node-version:
     description: >-
       Node version to set up for the scan. Note that this action calls
