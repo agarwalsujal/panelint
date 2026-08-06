@@ -1,0 +1,50 @@
+<!--
+  ZERO FINDINGS EXPECTED. This is a refusal, not a gap.
+
+  Geometric hiding — text covered by an opaque sibling — is refused OUTRIGHT
+  (docs/DESIGN.md §12 Q4). Deciding whether the card below actually covers the
+  paragraph needs line boxes, font metrics and image decoding, and the HOST
+  supplies the fonts and the viewport. Panelint would be verifying host
+  behaviour, which non-goal N2 forbids.
+
+  The pattern is also ubiquitous and legitimate, so a rule here carries a
+  false-positive GUARANTEE rather than a false-positive risk.
+
+  Note what is deliberately absent: no `display:none`, no `opacity:0`, no
+  zero-size box, no `text-indent`, no `clip-path`, no zero-width characters.
+  Every one of those is a DECLARED fact that survives any rendering, and the
+  PANE-HIDDEN family reads them. Overlap is not a declared fact.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Release notes</title>
+<style>
+  .stack { position: relative; width: 32rem; }
+  .stack p { margin: 0; line-height: 1.5rem; }
+  /* An in-flow card pulled up over the paragraph above it. No z-index, no
+     fixed positioning, not viewport-filling — this is a layout, not an overlay. */
+  .card {
+    margin-top: -3rem;
+    padding: 1rem;
+    background: #f4f1ea;
+    border: 1px solid #d8d2c4;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Release notes</h1>
+  <section class="stack">
+    <p>Long-form detail that the summary card is pulled up over. Whether any of
+       it remains readable depends on the host's font stack and the width the
+       host gives the frame.</p>
+    <div class="card">
+      <h2>Summary</h2>
+      <p>Three fixes and one behaviour change.</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

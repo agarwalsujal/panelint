@@ -1,0 +1,7 @@
+{
+  "csp": {
+    "connectDomains": [
+      "https://never-contacted.invalid"
+    ]
+  }
+}

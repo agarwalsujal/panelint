@@ -1,0 +1,13 @@
+<!--
+  Zero findings when the origin is one the server already declared.
+
+  Scanned with `_meta.ui.csp = { connectDomains: ["https://api.example.com"],
+  resourceDomains: ["https://cdn.example.com", "https://*.fonts.example.com"] }`.
+  A hint to an origin the app is already permitted to reach adds no channel.
+  Relative hints cannot leave an opaque-origin document.
+-->
+<link rel="preconnect" href="https://api.example.com">
+<link rel="dns-prefetch" href="https://cdn.example.com">
+<link rel="preconnect" href="https://a.fonts.example.com">
+<link rel="prefetch" href="/next-page">
+<link rel="stylesheet" href="https://cdn.example.com/app.css">

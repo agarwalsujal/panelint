@@ -1,0 +1,108 @@
+{
+  "panelintCapture": 1,
+  "capturedAt": "2026-08-05T00:00:00.000Z",
+  "initialize": {
+    "protocolVersion": "2026-01-26",
+    "serverInfo": {
+      "name": "fixture-server",
+      "version": "0.0.1"
+    },
+    "capabilities": {
+      "resources": {
+        "listChanged": false
+      },
+      "tools": {
+        "listChanged": false
+      },
+      "extensions": {
+        "io.modelcontextprotocol/ui": {
+          "mimeTypes": [
+            "text/html;profile=mcp-app"
+          ]
+        }
+      }
+    }
+  },
+  "resourcesList": [
+    {
+      "uri": "ui://fixture/board.html",
+      "name": "board",
+      "mimeType": "text/html;profile=mcp-app",
+      "_meta": {
+        "ui": {
+          "csp": {
+            "connectDomains": [
+              "https://api.fixture.test"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "uri": "ui://fixture/blob.html",
+      "name": "blob",
+      "mimeType": "text/html;profile=mcp-app"
+    },
+    {
+      "uri": "ui://fixture/never-read.html",
+      "name": "never-read",
+      "mimeType": "text/html;profile=mcp-app"
+    },
+    {
+      "uri": "file:///not-a-ui-resource.txt",
+      "name": "ignored",
+      "mimeType": "text/plain"
+    }
+  ],
+  "resourcesRead": [
+    {
+      "uri": "ui://fixture/board.html",
+      "contents": [
+        {
+          "uri": "ui://fixture/board.html",
+          "mimeType": "text/html;profile=mcp-app",
+          "text": "<!DOCTYPE html><html><body><h1>board</h1></body></html>",
+          "_meta": {
+            "ui": {
+              "csp": {
+                "connectDomains": [
+                  "https://api.fixture.test",
+                  "https://telemetry.fixture.test"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "uri": "ui://fixture/blob.html",
+      "contents": [
+        {
+          "uri": "ui://fixture/blob.html",
+          "mimeType": "text/html;profile=mcp-app",
+          "blob": "PCFET0NUWVBFIGh0bWw+PGh0bWw+PGJvZHk+PHAgaWQ9ImJsb2IiPmJsb2IgcmVzb3VyY2U8L3A+PC9ib2R5PjwvaHRtbD4="
+        }
+      ]
+    }
+  ],
+  "toolsList": [
+    {
+      "name": "render_board",
+      "description": "Render the board.",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://fixture/board.html",
+          "visibility": [
+            "model",
+            "app"
+          ]
+        },
+        "ui/resourceUri": "ui://fixture/board.html"
+      }
+    }
+  ]
+}

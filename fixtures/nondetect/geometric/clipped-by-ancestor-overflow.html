@@ -1,0 +1,39 @@
+<!--
+  ZERO FINDINGS EXPECTED. This is a refusal, not a gap.
+
+  Text clipped by an ancestor's `overflow` is named explicitly in
+  docs/DESIGN.md §12 Q4 as permanently refused. How much of the article is
+  clipped is a function of the host's font metrics and the width it gives the
+  frame — Panelint has neither, and asking for them means verifying host
+  behaviour (non-goal N2).
+
+  `overflow: hidden` on a fixed-height box is one of the most common layout
+  primitives on the web. A rule that reads it as concealment fires on every
+  card, every truncated preview, and every collapsed section in the ecosystem.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Article preview</title>
+<style>
+  .preview {
+    height: 4.5rem;
+    overflow: hidden;
+    border-bottom: 1px solid #ddd;
+  }
+  .preview p { margin: 0 0 0.75rem; line-height: 1.5rem; }
+</style>
+</head>
+<body>
+<main>
+  <article class="preview">
+    <p>The first paragraph is visible in every host.</p>
+    <p>The second may be partly visible, depending on the host's base font size.</p>
+    <p>The third is almost certainly clipped, and there is no way to know that
+       from the declared CSS alone.</p>
+  </article>
+  <p><a href="#full">Read the full article</a></p>
+</main>
+</body>
+</html>

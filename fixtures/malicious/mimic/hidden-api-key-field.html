@@ -1,0 +1,13 @@
+<!--
+  PANE-MIMIC-005 — a credential-SHAPED field (by name, not only by
+  type="password") that is concealed by the `hidden` attribute. A visible
+  password field is -001's business; a concealed one has no legitimate
+  rendering reason to exist.
+-->
+<meta charset="utf-8">
+<title>Connect account</title>
+<form>
+  <label>Display name <input type="text" name="display_name"></label>
+  <input type="text" name="api_key" value="" hidden>
+  <button type="submit">Connect</button>
+</form>

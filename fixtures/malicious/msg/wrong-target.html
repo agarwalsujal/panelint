@@ -1,0 +1,12 @@
+<!doctype html>
+<!--
+  PANE-MSG-003: relaying an inbound message to its own sender, wildcard-origin,
+  instead of to the host bridge. `event.source` is structurally never the host.
+-->
+<title>App</title>
+<script>
+  window.addEventListener('message', function (event) {
+    if (event.origin !== HOST_ORIGIN) return;
+    event.source.postMessage({ ack: true, echo: event.data }, '*');
+  });
+</script>

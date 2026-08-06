@@ -1,0 +1,12 @@
+<!--
+  PANE-SANDBOX-007 — the genuinely dangerous version of -003. A permission
+  the SERVER declared for its own app (_meta.ui.permissions.camera, supplied
+  out-of-band, not visible in this HTML file) is handed to a nested
+  THIRD-PARTY frame via `allow=`, extending the grant to code the server
+  does not control.
+
+  Synthetic. `widgets.invalid` is RFC 2606 reserved and resolves nowhere.
+-->
+<meta charset="utf-8">
+<title>Video call widget</title>
+<iframe title="call" src="https://widgets.invalid/call" allow="camera *; microphone *"></iframe>

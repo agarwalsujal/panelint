@@ -1,0 +1,38 @@
+<!--
+  Measured on pdf-server: an ordinary modal confirm dialog. It fills the
+  viewport with an elevated z-index -- the same geometry as a clickjacking
+  overlay -- but it is opaque, holds a heading and two real buttons, and its
+  copy is plainly a first-person site asking a question, not assistant-voice
+  prose. PANE-OVERLAY-001 must require a second signal precisely so this
+  produces nothing.
+-->
+<style>
+  .confirm-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(15, 15, 20, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .confirm-dialog .box {
+    background: #ffffff;
+    color: #1a1a1a;
+    padding: 24px 28px;
+    border-radius: 6px;
+    max-width: 360px;
+  }
+  .confirm-dialog button {
+    margin-top: 16px;
+    margin-right: 8px;
+  }
+</style>
+<div class="confirm-dialog" role="dialog" aria-modal="true">
+  <div class="box">
+    <h2>Delete this file?</h2>
+    <p>This action permanently removes the file from your workspace and cannot be undone.</p>
+    <button type="button">Cancel</button>
+    <button type="button">Delete</button>
+  </div>
+</div>

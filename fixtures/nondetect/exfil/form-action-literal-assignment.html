@@ -1,0 +1,17 @@
+<!--
+  Zero findings.
+
+  RULES.md's PANE-EXFIL-002 row has no literal carve-out, and it needs the same
+  one PANE-DOM-001 got after the measured pass. `setAttribute('action', '/search')`
+  is a literal same-document assignment; at HIGH/HIGH the rule is gate-eligible,
+  so without the carve-out this markup breaks a conformant app's build.
+-->
+<form id="f"><input name="q"></form>
+<script>
+  const f = document.getElementById('f');
+  f.action = '/search';
+  f.setAttribute('action', '/search');
+  f.action = '';
+  f.action = `/search`;
+  f.setAttribute('action', '/api' + '/search');
+</script>

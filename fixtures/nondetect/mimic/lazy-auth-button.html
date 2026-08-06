@@ -1,0 +1,10 @@
+<!--
+  PANE-MIMIC must produce ZERO findings here. This is the canonical
+  `ext-apps/examples/lazy-auth-server` pattern (docs/RULES.md § PANE-MIMIC):
+  no credential is collected in the app at all. A button hands off to a tool
+  call; the tool returns 401 with WWW-Authenticate; the HOST runs OAuth.
+-->
+<meta charset="utf-8">
+<title>Connect your calendar</title>
+<button id="auth">Connect calendar</button>
+<p>Sign-in happens in your client, not in this window.</p>

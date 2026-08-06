@@ -1,0 +1,93 @@
+{
+  "captureVersion": 1,
+  "provenance": {
+    "kind": "hand-authored-reproduction",
+    "reproduces": "modelcontextprotocol/ext-apps examples/map-server",
+    "pinnedCommit": null,
+    "note": "NOT a capture of the real server. Hand-authored to reproduce the shapes documented in docs/RULES.md § Measured false-positive pass. See fixtures/reference/README.md and scripts/capture-reference.ts."
+  },
+  "set": "measured",
+  "expectation": "PANE-INTEGRITY-001 at MEDIUM (below the gate) for the dynamically created CDN script with no integrity.",
+  "scannedAt": "2026-08-05T00:00:00.000Z",
+  "client": {
+    "capabilities": {
+      "extensions": {
+        "io.modelcontextprotocol/ui": {
+          "mimeTypes": [
+            "text/html;profile=mcp-app"
+          ]
+        }
+      }
+    }
+  },
+  "initialize": {
+    "protocolVersion": "2026-01-26",
+    "capabilities": {
+      "resources": {},
+      "tools": {},
+      "extensions": {
+        "io.modelcontextprotocol/ui": {}
+      }
+    },
+    "serverInfo": {
+      "name": "map-server",
+      "version": "1.0.0"
+    }
+  },
+  "resources/list": {
+    "resources": [
+      {
+        "uri": "ui://map/viewer",
+        "name": "viewer",
+        "description": "A globe view.",
+        "mimeType": "text/html;profile=mcp-app",
+        "_meta": {
+          "ui": {
+            "csp": {
+              "connectDomains": [
+                "https://api.cesium.com"
+              ],
+              "resourceDomains": [
+                "https://cdn.cesium.com"
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "tools/list": {
+    "tools": [
+      {
+        "name": "show_location",
+        "description": "Show a location on the globe.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "_meta": {
+          "ui": {
+            "resourceUri": "ui://map/viewer",
+            "visibility": [
+              "model",
+              "app"
+            ]
+          },
+          "ui/resourceUri": "ui://map/viewer"
+        }
+      }
+    ]
+  },
+  "resources/read": {
+    "ui://map/viewer": {
+      "contents": [
+        {
+          "uri": "ui://map/viewer",
+          "mimeType": "text/html;profile=mcp-app",
+          "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Map</title>\n<style>\n  html, body { height: 100%; margin: 0; }\n  #viewer { width: 100%; height: 100%; }\n  .status { position: absolute; top: 0.5rem; left: 0.5rem; font: 13px system-ui, sans-serif; }\n</style>\n</head>\n<body>\n<main>\n  <div id=\"viewer\"></div>\n  <p class=\"status\" id=\"status\" role=\"status\">Loading terrain…</p>\n</main>\n<script type=\"module\">\n  import { createApp } from './sdk.js';\n\n  const app = createApp();\n  const CESIUM = 'https://cdn.cesium.com/Cesium/1.120/Cesium/Cesium.js';\n\n  // A static <script src> does not work inside a srcdoc iframe, so the CDN\n  // script element is CREATED in JavaScript. This is the dynamic form of the\n  // supply-chain surface PANE-INTEGRITY-001 covers; there is no integrity\n  // attribute to set on an element built this way without setting it here.\n  function loadCesium() {\n    return new Promise((resolve, reject) => {\n      const s = document.createElement('script');\n      s.src = CESIUM;\n      s.async = true;\n      s.addEventListener('load', resolve);\n      s.addEventListener('error', () => reject(new Error('cesium failed to load')));\n      document.head.appendChild(s);\n    });\n  }\n\n  app.ready().then(async (ctx) => {\n    await loadCesium();\n    const viewer = new window.Cesium.Viewer('viewer', { timeline: false, animation: false });\n    const { longitude, latitude } = ctx.toolResult ?? { longitude: 0, latitude: 0 };\n    viewer.camera.flyTo({ destination: window.Cesium.Cartesian3.fromDegrees(longitude, latitude, 4e5) });\n    document.getElementById('status').textContent = 'Ready';\n  }).catch((err) => {\n    document.getElementById('status').textContent = 'Map unavailable: ' + err.message;\n  });\n</script>\n</body>\n</html>\n"
+        }
+      ]
+    }
+  }
+}

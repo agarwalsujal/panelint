@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "PANE-CSP-003": "critical",
+    "PANE-CSP-004": { "severity": "medium", "options": { "allowSelf": true } }
+  }
+}

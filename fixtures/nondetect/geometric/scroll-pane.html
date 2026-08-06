@@ -1,0 +1,38 @@
+<!--
+  ZERO FINDINGS EXPECTED. This is a refusal, not a gap.
+
+  A scroll pane is the case that makes the refusal obvious: the content below
+  the fold is NOT hidden — it is one gesture away, and how much of it is below
+  the fold depends on the viewport the host hands the frame. Panelint does not
+  know the viewport, and non-goal N2 forbids it from modelling one.
+
+  Scroll panes are named in docs/DESIGN.md §12 Q4 alongside truncated cells and
+  tab stacks.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Log</title>
+<style>
+  .pane { height: 8rem; overflow-y: auto; border: 1px solid #ddd; padding: 0.5rem; }
+  .pane li { line-height: 1.4rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Build log</h1>
+  <div class="pane" tabindex="0" role="region" aria-label="Build log">
+    <ol>
+      <li>resolved 42 packages</li>
+      <li>compiled src/index.ts</li>
+      <li>compiled src/parse/html.ts</li>
+      <li>compiled src/parse/css.ts</li>
+      <li>compiled src/report/sarif.ts</li>
+      <li>ran 118 tests</li>
+      <li>done in 4.1s</li>
+    </ol>
+  </div>
+</main>
+</body>
+</html>

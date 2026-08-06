@@ -1,0 +1,30 @@
+<!doctype html>
+<!--
+  fixtures/nondetect/feature-detection.html
+
+  PANE-SANDBOX-006 must produce ZERO findings here.
+
+  SPEC-REFERENCE.md §3.2, verbatim: "Apps SHOULD NOT assume permissions are
+  granted; use JS feature detection as fallback." A matcher keyed on
+  `navigator.geolocation` MEMBER ACCESS therefore flags the pattern the spec
+  RECOMMENDS. The rule requires an actual INVOCATION — `getCurrentPosition(`,
+  `getUserMedia(`, `clipboard.writeText(`.
+
+  This app reads the members and never calls anything.
+-->
+<meta charset="utf-8">
+<title>Capability report</title>
+<ul id="caps"></ul>
+<script>
+  const caps = [
+    ['geolocation', 'geolocation' in navigator && Boolean(navigator.geolocation)],
+    ['camera', Boolean(navigator.mediaDevices)],
+    ['clipboard', Boolean(navigator.clipboard)],
+  ];
+  const list = document.getElementById('caps');
+  for (const [name, available] of caps) {
+    const li = document.createElement('li');
+    li.textContent = name + ': ' + (available ? 'available' : 'unavailable');
+    list.appendChild(li);
+  }
+</script>

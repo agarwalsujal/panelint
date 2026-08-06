@@ -1,0 +1,7 @@
+{
+  "ui": {
+    "resourceUri": "ui://weather-server/dashboard-template",
+    "visibility": ["model", "app"]
+  },
+  "ui/resourceUri": "ui://weather-server/dashboard-template"
+}

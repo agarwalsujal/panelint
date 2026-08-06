@@ -1,0 +1,11 @@
+{
+  "csp": {
+    "connectDomains": [
+      "https://*.mapbox.com",
+      "https://events.mapbox.com"
+    ],
+    "resourceDomains": [
+      "https://api.mapbox.com"
+    ]
+  }
+}

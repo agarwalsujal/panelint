@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-05T00:00:00.000Z",
+  "panelintVersion": "0.1.0",
+  "entries": [
+    {
+      "fingerprint": "aaaa0000",
+      "ruleId": "PANE-CSP-003",
+      "resourceUri": "ui://server/view",
+      "contentHash": "hash-one",
+      "acceptedAt": "2026-08-05T00:00:00.000Z",
+      "reason": "This view legitimately nests a frame from our own docs origin."
+    }
+  ]
+}

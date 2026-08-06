@@ -1,0 +1,49 @@
+<!--
+  ZERO FINDINGS EXPECTED. This is a refusal, not a gap.
+
+  A tab stack where the inactive panels are translated out of a clipping
+  container, rather than removed with `display:none`. Only one panel is on
+  screen at a time and the other two are still in the DOM, still in the
+  accessibility tree unless the author says otherwise, and one click away.
+
+  Deciding "is panel 2 visible" needs the container's computed width, which the
+  HOST determines. Panelint does not compute styles and does not model a
+  viewport, so it declines — permanently, not pending a rendered-DOM mode
+  (docs/DESIGN.md §12 Q4).
+
+  Contrast this with the case Panelint DOES take: had the inactive panels been
+  `display:none` while carrying instruction-bearing prose, that is a declared
+  fact readable from the CSS alone and the PANE-HIDDEN family reads it.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<style>
+  .tabs { width: 24rem; overflow: hidden; }
+  .track { display: flex; width: 72rem; transform: translateX(0); transition: transform 180ms ease; }
+  .track.at-2 { transform: translateX(-24rem); }
+  .track.at-3 { transform: translateX(-48rem); }
+  .panel { width: 24rem; flex: none; padding: 0.75rem; }
+  @media (prefers-reduced-motion: reduce) { .track { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Settings</h1>
+  <div role="tablist" aria-label="Settings sections">
+    <button type="button" role="tab" aria-selected="true" aria-controls="p1" id="t1">General</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="p2" id="t2">Network</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="p3" id="t3">About</button>
+  </div>
+  <div class="tabs">
+    <div class="track">
+      <section class="panel" role="tabpanel" id="p1" aria-labelledby="t1"><p>General settings.</p></section>
+      <section class="panel" role="tabpanel" id="p2" aria-labelledby="t2"><p>Network settings.</p></section>
+      <section class="panel" role="tabpanel" id="p3" aria-labelledby="t3"><p>Version 1.0.0.</p></section>
+    </div>
+  </div>
+</main>
+</body>
+</html>

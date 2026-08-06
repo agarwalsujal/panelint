@@ -1,0 +1,11 @@
+<!doctype html>
+<!--
+  navigator.clipboard.writeText, with clipboardWrite declared. PANE-INPUT-003
+  fires only when the permission is NOT declared, per the RULES.md row.
+-->
+<title>App</title>
+<script>
+  document.getElementById('copy-btn')?.addEventListener('click', function () {
+    navigator.clipboard.writeText('https://example.com/share/42');
+  });
+</script>

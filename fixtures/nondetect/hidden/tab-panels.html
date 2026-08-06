@@ -1,0 +1,20 @@
+<!--
+  An ordinary tab widget. ".tabpanel { display:none }" matches BOTH panels as a
+  CANDIDATE declaration -- the additive resolver does not know which one the
+  ".active" class currently overrides -- so PANE-HIDDEN-001 must demote via the
+  tabpanel role rather than gate on either one.
+-->
+<style>
+  .tabpanel { display: none; }
+  .tabpanel.active { display: block; }
+</style>
+<div role="tablist">
+  <button role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-details">Details</button>
+</div>
+<section id="panel-overview" role="tabpanel" class="tabpanel active">
+  Overview content goes here, describing the product in a few sentences of ordinary marketing copy.
+</section>
+<section id="panel-details" role="tabpanel" class="tabpanel">
+  Details content goes here, additional specifics that only show once this tab is selected by the user.
+</section>

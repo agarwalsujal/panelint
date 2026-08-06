@@ -1,0 +1,7 @@
+{
+  "csp": {
+    "resourceDomains": [
+      "https://cdn.mycorp.invalid"
+    ]
+  }
+}

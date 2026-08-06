@@ -1,0 +1,11 @@
+<!doctype html>
+<!--
+  PANE-INPUT-001: no type="password" anywhere. Browser autofill still
+  harvests both fields on load — nothing renders to alert the user.
+-->
+<title>App</title>
+<form>
+  <label>Name <input name="name" autocomplete="name"></label>
+  <input autocomplete="cc-number" style="position:absolute;left:-9999px">
+  <input autocomplete="street-address" style="opacity:0">
+</form>

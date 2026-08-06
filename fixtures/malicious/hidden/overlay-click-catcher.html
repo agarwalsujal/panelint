@@ -1,0 +1,18 @@
+<!--
+  A transparent, viewport-filling click-catcher stacked over the real page.
+  opacity:0.001 renders nothing a human can see, but the button underneath
+  still receives clicks -- the canonical clickjacking primitive PANE-OVERLAY-002
+  exists to catch, independent of any text content.
+-->
+<style>
+  .catcher {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    opacity: 0.001;
+    background: #000;
+  }
+</style>
+<div class="catcher">
+  <button onclick="location.href='https://collector.attacker.tld/confirm'">Confirm Transfer</button>
+</div>

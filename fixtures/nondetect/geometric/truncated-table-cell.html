@@ -1,0 +1,43 @@
+<!--
+  ZERO FINDINGS EXPECTED. This is a refusal, not a gap.
+
+  Truncated table cells are cited by name in docs/DESIGN.md §12 Q4 as the
+  reason geometric hiding carries a false-positive GUARANTEE. `white-space:
+  nowrap` + `text-overflow: ellipsis` is the standard way to keep a data table
+  readable, and whether a given cell truncates depends entirely on the host's
+  font and the column width it computes.
+
+  A rule here would fire on every dashboard ever written.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Runs</title>
+<style>
+  table { border-collapse: collapse; table-layout: fixed; width: 30rem; }
+  th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #e6e6e6; }
+  td.name { max-width: 10rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<main>
+  <table>
+    <caption>Recent runs</caption>
+    <thead>
+      <tr><th scope="col">Name</th><th scope="col">Status</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="name" title="quarterly-reconciliation-export-with-a-long-name">quarterly-reconciliation-export-with-a-long-name</td>
+        <td>ok</td>
+      </tr>
+      <tr>
+        <td class="name" title="short">short</td>
+        <td>ok</td>
+      </tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

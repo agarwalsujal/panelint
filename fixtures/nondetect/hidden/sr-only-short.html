@@ -1,0 +1,24 @@
+<!--
+  The canonical .sr-only recipe, combining the clip-based technique with the
+  older text-indent/left offset fallback that some component libraries still
+  ship for legacy browser support. Trips PANE-HIDDEN-005 (offscreen),
+  PANE-HIDDEN-006 (clip + 1px overflow-hidden) and PANE-HIDDEN-014
+  (text-indent) at once, each landing at INFO: under 100 characters with an
+  accessibility-shaped class name.
+-->
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+    left: -9999px;
+    text-indent: -9999px;
+  }
+</style>
+<a href="#main-content" class="sr-only">Skip to main content</a>

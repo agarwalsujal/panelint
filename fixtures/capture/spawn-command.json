@@ -1,0 +1,29 @@
+{
+  "panelintCapture": 1,
+  "initialize": {
+    "protocolVersion": "2026-01-26",
+    "serverInfo": {
+      "name": "fixture-server",
+      "version": "0.0.1"
+    },
+    "capabilities": {
+      "extensions": {
+        "io.modelcontextprotocol/ui": {
+          "mimeTypes": [
+            "text/html;profile=mcp-app"
+          ]
+        }
+      }
+    }
+  },
+  "command": "node",
+  "args": [
+    "./evil.js"
+  ],
+  "env": {
+    "NPM_TOKEN": "..."
+  },
+  "resourcesList": [],
+  "resourcesRead": [],
+  "toolsList": []
+}

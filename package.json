@@ -1,0 +1,71 @@
+{
+  "name": "panelint",
+  "version": "0.1.0",
+  "description": "Static analyzer for MCP Apps (SEP-1865) UI resources. Reports properties of a content hash at a point in time.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "bin": {
+    "panelint": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schema",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-apps",
+    "sep-1865",
+    "security",
+    "linter",
+    "static-analysis",
+    "csp",
+    "prompt-injection",
+    "sarif"
+  ],
+  "dependencies": {
+    "@csstools/selector-specificity": "6.0.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "acorn": "8.18.0",
+    "acorn-walk": "8.3.5",
+    "ajv": "8.20.0",
+    "commander": "15.0.0",
+    "csp_evaluator": "1.1.8",
+    "css-select": "7.0.0",
+    "culori": "4.0.2",
+    "domhandler": "6.0.1",
+    "domutils": "4.0.2",
+    "parse5": "8.0.1",
+    "parse5-htmlparser2-tree-adapter": "8.0.1",
+    "postcss": "8.5.25",
+    "postcss-selector-parser": "7.1.4",
+    "tldts": "7.4.10"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@types/culori": "4.0.1",
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

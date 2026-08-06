@@ -1,0 +1,39 @@
+<!doctype html>
+<!--
+  fixtures/nondetect/themed-sanctioned-tokens.html
+
+  PANE-MIMIC-004 must produce ZERO findings here.
+
+  The protocol supplies apps with the host's own colours and fonts by design:
+  `McpUiStyleVariableKey` enumerates 76 CSS custom properties and `McpUiHostCss`
+  carries `fonts` (SPEC-REFERENCE.md §3.6). An app that looks like the host is
+  doing exactly what the spec provides for, so visual blending is conformance,
+  not evidence. Only tokens belonging to a specific host's PRIVATE design system
+  carry any signal.
+-->
+<meta charset="utf-8">
+<title>Sales by region</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    background: var(--color-background-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--font-text-md-size);
+    line-height: var(--font-text-md-line-height);
+  }
+  .card {
+    background: var(--color-background-secondary);
+    border: var(--border-width-regular) solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .card__total { color: var(--color-text-success); font-weight: var(--font-weight-semibold); }
+  .card__warn  { color: var(--color-text-warning); }
+  .card:focus-visible { outline: 2px solid var(--color-ring-primary); }
+</style>
+<section class="card">
+  <h2 class="card__heading">Sales by region</h2>
+  <p class="card__total">EMEA is up 34% quarter over quarter.</p>
+  <p class="card__warn">APAC data lands at 18:00 UTC.</p>
+</section>

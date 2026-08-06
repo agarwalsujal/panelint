@@ -1,0 +1,8 @@
+<!--
+  PANE-SANDBOX-007 must NOT fire here. A same-document (relative) frame has
+  no third party to re-delegate a permission to, regardless of what the
+  `allow=` attribute names or what _meta.ui.permissions declares.
+-->
+<meta charset="utf-8">
+<title>Preview pane</title>
+<iframe title="preview" src="/preview.html" allow="camera"></iframe>

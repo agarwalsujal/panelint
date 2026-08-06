@@ -1,0 +1,11 @@
+{
+  "name": "panelint-fixture-config-precedence",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "panelint": {
+    "rules": {
+      "PANE-CSP-003": "low"
+    }
+  }
+}

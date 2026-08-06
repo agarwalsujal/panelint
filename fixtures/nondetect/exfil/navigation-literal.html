@@ -1,0 +1,16 @@
+<!--
+  Literal destinations must produce ZERO findings. A literal cannot carry
+  runtime data out, and the same carve-out is what keeps PANE-DOM-001 off
+  pdf-server's static icon-SVG assignments.
+
+  A template literal with no interpolation, an empty string, and a
+  concatenation of two literals all count as literal (parse/js.ts
+  `isLiteralExpression`).
+-->
+<script>
+  function reset()  { location.href = ''; }
+  function docs()   { location.href = 'https://modelcontextprotocol.io/docs'; }
+  function tmpl()   { location.href = `/section`; }
+  function joined() { location.replace('/a' + '/b'); }
+  function help()   { window.open('https://modelcontextprotocol.io/help', '_blank'); }
+</script>

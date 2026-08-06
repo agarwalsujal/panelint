@@ -1,0 +1,10 @@
+<!doctype html>
+<!-- PANE-MSG-001: an inline message listener that never checks origin or source. -->
+<title>App</title>
+<div id="root"></div>
+<script>
+  window.addEventListener('message', function (event) {
+    // No event.origin check. No event.source check. event.data is trusted outright.
+    document.getElementById('root').innerHTML = event.data.html;
+  });
+</script>

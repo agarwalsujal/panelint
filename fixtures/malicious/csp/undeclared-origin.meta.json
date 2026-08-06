@@ -1,0 +1,7 @@
+{
+  "csp": {
+    "connectDomains": [
+      "https://api.invalid"
+    ]
+  }
+}

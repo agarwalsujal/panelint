@@ -1,0 +1,7 @@
+{
+  "csp": {
+    "connectDomains": ["https://api.openweathermap.org"],
+    "resourceDomains": ["https://cdn.example.com"]
+  },
+  "prefersBorder": true
+}

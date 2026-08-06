@@ -1,0 +1,17 @@
+<!--
+  Host-supplied theming through CSS custom properties, per SPEC-REFERENCE
+  §3.6. Neither --color-background-primary nor --color-text-primary is
+  declared anywhere in this document -- the host supplies them at runtime --
+  so PANE-HIDDEN-004 cannot resolve either colour and must decline (undecided,
+  no finding) rather than default to white and fire on every dark theme.
+-->
+<style>
+  body { background: var(--color-background-primary); }
+  .text { color: var(--color-text-primary); }
+</style>
+<body>
+  <p class="text">
+    Welcome back. Here is a summary of your account activity for the past thirty days,
+    including recent transactions and any pending actions that need your attention.
+  </p>
+</body>

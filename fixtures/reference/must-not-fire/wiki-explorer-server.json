@@ -1,0 +1,81 @@
+{
+  "captureVersion": 1,
+  "provenance": {
+    "kind": "hand-authored-reproduction",
+    "reproduces": "modelcontextprotocol/ext-apps examples/wiki-explorer-server",
+    "pinnedCommit": null,
+    "note": "NOT a capture of the real server. Hand-authored to reproduce the shapes documented in docs/RULES.md § Measured false-positive pass. See fixtures/reference/README.md and scripts/capture-reference.ts."
+  },
+  "set": "must-not-fire",
+  "expectation": "Zero SPEC, SCHEMA or RISK findings. Any finding fails CI.",
+  "scannedAt": "2026-08-05T00:00:00.000Z",
+  "client": {
+    "capabilities": {
+      "extensions": {
+        "io.modelcontextprotocol/ui": {
+          "mimeTypes": [
+            "text/html;profile=mcp-app"
+          ]
+        }
+      }
+    }
+  },
+  "initialize": {
+    "protocolVersion": "2026-01-26",
+    "capabilities": {
+      "resources": {},
+      "tools": {},
+      "extensions": {
+        "io.modelcontextprotocol/ui": {}
+      }
+    },
+    "serverInfo": {
+      "name": "wiki-explorer-server",
+      "version": "1.0.0"
+    }
+  },
+  "resources/list": {
+    "resources": [
+      {
+        "uri": "ui://wiki-explorer/article",
+        "name": "article",
+        "description": "An article view.",
+        "mimeType": "text/html;profile=mcp-app"
+      }
+    ]
+  },
+  "tools/list": {
+    "tools": [
+      {
+        "name": "search_wiki",
+        "description": "Search and return an article.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "_meta": {
+          "ui": {
+            "resourceUri": "ui://wiki-explorer/article",
+            "visibility": [
+              "model",
+              "app"
+            ]
+          },
+          "ui/resourceUri": "ui://wiki-explorer/article"
+        }
+      }
+    ]
+  },
+  "resources/read": {
+    "ui://wiki-explorer/article": {
+      "contents": [
+        {
+          "uri": "ui://wiki-explorer/article",
+          "mimeType": "text/html;profile=mcp-app",
+          "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Wiki explorer</title>\n<style>\n  body { font: 15px/1.6 Georgia, \"Iowan Old Style\", serif; margin: 0; padding: 1rem; }\n  h1 { font-size: 1.4rem; }\n  .search { display: flex; gap: 0.5rem; }\n  input[type=\"search\"] { flex: 1; min-height: 44px; padding: 0 0.5rem; }\n  button { min-height: 44px; padding: 0 1rem; }\n  :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }\n  .summary p { max-width: 62ch; }\n</style>\n</head>\n<body>\n<main>\n  <h1 id=\"title\">Wiki explorer</h1>\n  <!-- No <form>: submission is a tool call, so there is no navigation to make. -->\n  <div class=\"search\">\n    <label class=\"visually-shown\" for=\"q\">Search</label>\n    <input type=\"search\" id=\"q\" name=\"q\" autocomplete=\"off\">\n    <button type=\"button\" id=\"go\">Search</button>\n  </div>\n  <section class=\"summary\" id=\"summary\" aria-live=\"polite\"></section>\n</main>\n<script type=\"module\">\n  import { createApp } from './sdk.js';\n\n  const app = createApp();\n  const summary = document.getElementById('summary');\n  const title = document.getElementById('title');\n\n  // The SERVER does the fetching. The app renders what the tool result carries,\n  // which is why this server declares no connectDomains and still works.\n  function render(article) {\n    title.textContent = article.title;\n    summary.replaceChildren();\n    for (const para of article.paragraphs) {\n      const p = document.createElement('p');\n      p.textContent = para;\n      summary.append(p);\n    }\n  }\n\n  document.getElementById('go').addEventListener('click', async () => {\n    const q = document.getElementById('q').value.trim();\n    if (!q) return;\n    const article = await app.callTool('search_wiki', { query: q });\n    render(article);\n    app.updateModelContext({ text: 'Showing the article \"' + article.title + '\".' });\n  });\n\n  app.ready().then((ctx) => { if (ctx.toolResult) render(ctx.toolResult); });\n</script>\n</body>\n</html>\n"
+        }
+      ]
+    }
+  }
+}

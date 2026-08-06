@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  PANE-MSG-002: origin checks that look real but are bypassable.
+
+  `startsWith` passes for "https://good.example.evil.tld". The unanchored
+  regex passes for "https://evil.example/?good.example".
+-->
+<title>App</title>
+<script>
+  window.addEventListener('message', function (event) {
+    if (event.origin.startsWith('https://good.example')) {
+      apply(event.data);
+    }
+  });
+
+  window.addEventListener('message', function (event) {
+    if (/good\.example/.test(event.origin)) {
+      apply(event.data);
+    }
+  });
+</script>

@@ -1,0 +1,8 @@
+{
+  "ui": {
+    "resourceUri": "ui://weather-server/dashboard-template",
+    "csp": {
+      "connectDomains": ["https://api.openweathermap.org"]
+    }
+  }
+}

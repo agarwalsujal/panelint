@@ -1,0 +1,10 @@
+{
+  "csp": {
+    "frameDomains": [
+      "https://embed.invalid"
+    ],
+    "baseUriDomains": [
+      "https://base.invalid"
+    ]
+  }
+}

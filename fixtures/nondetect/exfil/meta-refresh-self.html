@@ -1,0 +1,23 @@
+<!--
+  Both of these must produce ZERO PANE-EXFIL-003 findings.
+
+  1. `content="30"` has no `url=` component. It reloads the same document on a
+     timer. It exfiltrates nothing, and a poll loop is an ordinary thing for a
+     dashboard app to do.
+
+  2. A refresh inside `<noscript>` is INERT in any host granting
+     `allow-scripts` — which the spec mandates, since the default CSP carries
+     `script-src 'self' 'unsafe-inline'`. Claiming an egress channel here would
+     be a finding on code that cannot run. PANE-HIDDEN-012 covers it as a
+     non-rendered carrier instead.
+
+     parse/html.ts parses with `scriptingEnabled: false`, so noscript content
+     IS in the tree as markup rather than as text — the rule has to check
+     ancestry explicitly to see this.
+-->
+<meta http-equiv="refresh" content="30">
+<meta http-equiv="refresh" content=" 60 ">
+<noscript>
+  <meta http-equiv="refresh" content="0;url=https://collector.invalid/c?f=1">
+</noscript>
+<p>Dashboard</p>

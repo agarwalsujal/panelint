@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  The best-configured server in the 21-server hand-scan: narrow, first-party,
+  exactly what the spec intends. A naive wildcard check flags `https://*.mapbox.com`
+  and this is the server it would hit hardest — the tool punishing the one team
+  that did the work properly. Every PANE-CSP rule must produce ZERO here.
+-->
+<html>
+  <body>
+    <div id="map"></div>
+    <script>
+      fetch('https://api.mapbox.com/v1/tiles');
+      fetch('https://events.mapbox.com/events/v2', { method: 'POST' });
+    </script>
+    <img src="https://api.mapbox.com/styles/v1/preview.png" alt="map preview">
+  </body>
+</html>

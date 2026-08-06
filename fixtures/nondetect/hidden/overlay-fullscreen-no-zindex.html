@@ -1,0 +1,24 @@
+<!--
+  Measured on threejs-server: .error-overlay fills the viewport but declares
+  no z-index at all. Absent must read as "auto", never as elevated -- treating
+  it as elevated would reacquire this false positive through the back door.
+-->
+<style>
+  .error-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #000;
+    color: #f66;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    padding: 24px;
+  }
+</style>
+<div class="error-overlay">
+  <pre>WebGL context could not be created. Your browser or device may not support WebGL2. Try updating your graphics drivers or switching browsers.</pre>
+</div>

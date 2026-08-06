@@ -1,0 +1,54 @@
+<!--
+  Every form here must produce ZERO findings.
+
+  The app document's URL is `about:srcdoc`, a `blob:` URL, or an opaque origin.
+  There is no origin to be "same" as, so every relative URL is same-document.
+  In an MCP App the EMPTY action is the benign case — it re-posts to the app's
+  own document, which goes nowhere. Classic web-phishing heuristics that treat
+  an empty action as suspicious invert here, and a rule that ports one over
+  fires on conformant code.
+-->
+<form action="">
+  <input name="q"><button>Search</button>
+</form>
+
+<form>
+  <input name="q"><button>Search</button>
+</form>
+
+<form action="/search">
+  <input name="q"><button>Search</button>
+</form>
+
+<form action="./results?page=2">
+  <input name="q"><button>Search</button>
+</form>
+
+<form action="#">
+  <input name="q"><button>Search</button>
+</form>
+
+<form action="?page=2">
+  <input name="q"><button>Search</button>
+</form>
+
+<!-- 'unsafe-inline' is mandated by the spec's default CSP, so a javascript:
+     action is in-policy. It reaches no network. PANE-DOM covers the sinks. -->
+<form action="javascript:submitLocally()">
+  <input name="q"><button>Search</button>
+</form>
+
+<form action="mailto:someone@example.com">
+  <input name="q"><button>Mail</button>
+</form>
+
+<!-- method="dialog" closes the dialog. It never submits anywhere. -->
+<dialog open>
+  <form method="dialog" action="https://collector.invalid/never">
+    <button value="ok">OK</button>
+  </form>
+</dialog>
+
+<form action="/local">
+  <button type="submit" formmethod="dialog" formaction="https://collector.invalid/never">Close</button>
+</form>

@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# ---------------------------------------------------------------------------
+# PRIVATE — never publish. This repository is intended to go public.
+# ---------------------------------------------------------------------------
+
+# Agent + assistant configuration
+.claude/
+CLAUDE.md
+.cursor/
+.aider*
+
+# Strategy, planning, and competitive analysis. Never published.
+#
+#   private/ROADMAP.md          kill criteria, funding applications, ship dates,
+#                               acquisition sequencing
+#   private/RESEARCH.md         competitor teardowns, thesis-falsification tests
+#   private/PRD.md              success metrics, probability estimates
+#   private/MARKETING.md        target vendors, outreach tiers, positioning
+#   private/CONTENT-CALENDAR.md posting plan + disclosure email templates
+#
+# Two of these are actively self-harming if published. Kill criteria tell an
+# acquirer your reservation price and tell users you might walk away. Competitor
+# teardowns burn a partnership before you have opened it.
+private/
+docs/private/
+
+# Scan artifacts — never commit scan output of third-party servers.
+# Per-server findings are subject to the disclosure policy in SECURITY.md.
+*.sarif
+scan-results/
+census/raw/
+census/findings/
+
+# Disclosure correspondence and anything naming an unfixed vendor finding
+disclosures/
+*.disclosure.md
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*

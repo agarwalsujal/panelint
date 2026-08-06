@@ -1,0 +1,16 @@
+<!--
+  Zero findings.
+
+  RULES.md's row for PANE-EXFIL-006 reads "…or any `<base>` when
+  `baseUriDomains` is unset". That condition is universally true: not one of
+  the eight reference servers declares `baseUriDomains`, so the rule as written
+  fires on EVERY app that has a `<base>` at all — a gate-eligible HIGH/CERTAIN
+  finding on conformant markup. Corrected to an absolute off-origin `href`.
+
+  A `<base>` with no `href` sets only the default browsing context for links.
+  A relative `href` cannot leave a document whose URL is opaque.
+-->
+<base target="_blank">
+<base href="/">
+<base href="./assets/">
+<a href="docs.html" target="_blank">Docs</a>

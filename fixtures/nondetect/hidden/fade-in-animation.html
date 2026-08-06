@@ -1,0 +1,22 @@
+<!--
+  The most common opacity:0 idiom in modern UI: a toast that starts invisible
+  and transitions to opacity:1 once the ".visible" class is applied by script.
+  PANE-HIDDEN-002 and PANE-OVERLAY-002 must both demote this to LOW rather than
+  suppress it -- the finding still exists, it just does not gate a build.
+-->
+<style>
+  .toast {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .toast.visible {
+    opacity: 1;
+  }
+</style>
+<div class="toast">
+  <span>Item deleted</span>
+  <button type="button">Undo</button>
+</div>

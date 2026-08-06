@@ -1,0 +1,5 @@
+{
+  "csp": {
+    "connectDomain": ["https://api.example.com"]
+  }
+}

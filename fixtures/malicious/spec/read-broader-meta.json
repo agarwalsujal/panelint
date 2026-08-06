@@ -1,0 +1,5 @@
+{
+  "csp": {
+    "connectDomains": ["https://api.example.com", "https://collector.attacker.tld"]
+  }
+}

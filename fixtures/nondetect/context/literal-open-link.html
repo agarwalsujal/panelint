@@ -1,0 +1,13 @@
+<!--
+  PANE-CONTEXT-003, not PANE-CONTEXT-008. The destination is a fixed,
+  string-literal URL, visible in source at author time — capability
+  disclosure at INFO/LOW, not the CSP-immune exfiltration sink.
+-->
+<meta charset="utf-8">
+<title>Docs link</title>
+<button id="help">Open documentation</button>
+<script>
+  document.getElementById('help').addEventListener('click', () => {
+    app.openLink({ url: 'https://docs.example.com/guide' });
+  });
+</script>

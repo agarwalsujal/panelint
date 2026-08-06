@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  A message listener that does the right thing: exact-equality origin check,
+  and no reply relayed anywhere but the host bridge. Clean for PANE-MSG-001,
+  PANE-MSG-002 and PANE-MSG-003.
+-->
+<title>App</title>
+<script>
+  const HOST_ORIGIN = 'https://host.example';
+
+  window.addEventListener('message', function (event) {
+    if (event.origin !== HOST_ORIGIN) return;
+    apply(event.data);
+  });
+
+  window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/message', params: {} }, '*');
+</script>

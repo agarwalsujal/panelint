@@ -1,0 +1,12 @@
+<!--
+  PANE-SANDBOX-003 / -004 — informational-only findings on their own (a
+  nested frame cannot exceed its ancestor's flags, and the app document's
+  opaque origin sends no referrer regardless of policy), kept as disclosure.
+-->
+<meta charset="utf-8">
+<title>Embedded widget</title>
+<iframe
+  title="widget"
+  src="/widget.html"
+  allow="camera *; microphone *"
+  referrerpolicy="unsafe-url"></iframe>

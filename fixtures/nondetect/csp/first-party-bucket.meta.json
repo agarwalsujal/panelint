@@ -1,0 +1,7 @@
+{
+  "csp": {
+    "resourceDomains": [
+      "https://assets.mycorp.blob.core.windows.net"
+    ]
+  }
+}

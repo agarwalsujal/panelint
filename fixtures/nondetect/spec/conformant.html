@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Conformant MCP App</title>
+</head>
+<body>
+  <main>
+    <h1>Sales by region</h1>
+
+    <!-- A real <template>, closed. Its content is a separate fragment, which is
+         why the walker descends into it — but that is PANE-HIDDEN's business,
+         not a parser differential. -->
+    <template id="row">
+      <tr><td class="name"></td><td class="value"></td></tr>
+    </template>
+
+    <!-- Icon SVG in the shape every UI library emits. Closed, foreign content
+         only, one integration point (<title>) used for the accessible name. -->
+    <button type="button" aria-label="Close">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <title>Close</title>
+        <style>.stroke { stroke: currentColor }</style>
+        <path class="stroke" d="M6 6 L18 18 M18 6 L6 18"/>
+      </svg>
+    </button>
+
+    <!-- Self-closing foreign-content start tag. Legal, and it has no end tag by
+         construction — an implementation that keys on "no end tag" without
+         excluding this flags a correct document. -->
+    <svg viewBox="0 0 4 4" xmlns="http://www.w3.org/2000/svg"/>
+
+    <!-- HTML inside SVG through the foreignObject integration point. The tree
+         and the source agree here, so it is not a differential. -->
+    <svg viewBox="0 0 100 40" xmlns="http://www.w3.org/2000/svg">
+      <foreignObject x="0" y="0" width="100" height="40">
+        <div xmlns="http://www.w3.org/1999/xhtml">Wrapped label</div>
+      </foreignObject>
+    </svg>
+
+    <!-- MathML through its own integration point. -->
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <mtext>total</mtext>
+      <mi>x</mi>
+    </math>
+
+    <table id="out"></table>
+  </main>
+
+  <script>
+    // The standard escape. `</scr` + `ipt>` inside a script string would end the
+    // element, so authors write the backslash form — it is the CORRECT idiom and
+    // the parser handles it exactly as written. Flagging it is a false positive
+    // on the one construct authors reliably get right.
+    const CLOSER = "<\/script>";
+
+    const rows = [
+      { name: "North", value: 41 },
+      { name: "South", value: 27 },
+    ];
+
+    const tpl = document.getElementById("row");
+    const out = document.getElementById("out");
+    for (const row of rows) {
+      const node = tpl.content.cloneNode(true);
+      node.querySelector(".name").textContent = row.name;
+      node.querySelector(".value").textContent = String(row.value);
+      out.appendChild(node);
+    }
+    void CLOSER;
+  </script>
+</body>
+</html>

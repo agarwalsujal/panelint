@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  fixtures/nondetect/nested-srcdoc-frame.html
+
+  PANE-SANDBOX-001 must not fire here, and must not stay silent either.
+
+  `allow-scripts allow-same-origin` is MANDATED for the sandbox proxy
+  (SPEC-REFERENCE.md §3.3), and a srcdoc child is the legitimate pattern
+  (RULES.md § PANE-SANDBOX). Same-origin-with-the-HOST is the rule's premise,
+  and this resource declares no `_meta.ui.domain` — as none of the eight
+  reference servers does — so there is no declared origin to compare against.
+
+  Expected: ZERO findings, exactly ONE undecided note.
+-->
+<meta charset="utf-8">
+<title>Preview pane</title>
+<h1>Rendered preview</h1>
+<iframe
+  title="preview"
+  sandbox="allow-scripts allow-same-origin"
+  srcdoc="&lt;p&gt;Hello from the preview&lt;/p&gt;"></iframe>

@@ -1,0 +1,104 @@
+{
+  "source": "https://github.com/modelcontextprotocol/ext-apps",
+  "ref": "refs/heads/main",
+  "fetchedAt": "2026-08-06",
+  "note": "Verbatim mcp-app.html from each example server. These are the REAL reference servers, not reproductions. Several are Vite entry stubs (<400 bytes); the substantive ones are what give this corpus its power.",
+  "files": {
+    "basic-server-preact.html": {
+      "bytes": 379,
+      "sha256": "586e099d92ede8a0382784b9e2473b8a24336c5b028a7b3a7691bdc5aa3b5df7"
+    },
+    "basic-server-react.html": {
+      "bytes": 379,
+      "sha256": "586e099d92ede8a0382784b9e2473b8a24336c5b028a7b3a7691bdc5aa3b5df7"
+    },
+    "basic-server-solid.html": {
+      "bytes": 379,
+      "sha256": "586e099d92ede8a0382784b9e2473b8a24336c5b028a7b3a7691bdc5aa3b5df7"
+    },
+    "basic-server-svelte.html": {
+      "bytes": 377,
+      "sha256": "f86c6d9b8aee99724908ea6fd3c4c3f37441f4f099da4e2098024713583fd9e5"
+    },
+    "basic-server-vanillajs.html": {
+      "bytes": 1065,
+      "sha256": "5f69cc9a85ab0fe4134bccfc86062760c2a9d6a31e1c200d1be88c82e0bce4c3"
+    },
+    "basic-server-vue.html": {
+      "bytes": 377,
+      "sha256": "f86c6d9b8aee99724908ea6fd3c4c3f37441f4f099da4e2098024713583fd9e5"
+    },
+    "budget-allocator-server.html": {
+      "bytes": 1053,
+      "sha256": "26ac6e944d5d8611cd6d6b3d8d20ce3be907116b6c215fb4405e1365252a9f26"
+    },
+    "cohort-heatmap-server.html": {
+      "bytes": 391,
+      "sha256": "6f0b5400c3813bcd0af7327a8775d727245aa32b57438bdaa48391dd37fa36e3"
+    },
+    "customer-segmentation-server.html": {
+      "bytes": 2448,
+      "sha256": "7abb463bc4cbc4649f87f990654a5de1688d754b60240f650409ebc1241f08e6"
+    },
+    "debug-server.html": {
+      "bytes": 8032,
+      "sha256": "a9228632148fcc265f9fadf8db95d58b1d5a3c102a6fcd8ed6c38f29f2b42503"
+    },
+    "integration-server.html": {
+      "bytes": 379,
+      "sha256": "586e099d92ede8a0382784b9e2473b8a24336c5b028a7b3a7691bdc5aa3b5df7"
+    },
+    "lazy-auth-server.html": {
+      "bytes": 853,
+      "sha256": "a6634531b1e584b2824d250c83f4ed15853453a5188769e9524f7e83eb8e4132"
+    },
+    "map-server.html": {
+      "bytes": 2490,
+      "sha256": "a1c9057f35441717e81cd34de9678914d8364b838e07a76960ae26fbbe0c8549"
+    },
+    "pdf-server.html": {
+      "bytes": 8219,
+      "sha256": "39ce7d15e4502d3f058f6c8f1d3e75b0718540402fab0cba1594432d5c04b7b2"
+    },
+    "quickstart.html": {
+      "bytes": 347,
+      "sha256": "23c5504f659ea340e566462b3abd987b8266f8d95844c9470abc98827ecbb2ad"
+    },
+    "say-server.html": {
+      "bytes": 375,
+      "sha256": "875772898449ea86f00483cf285fc8783b51141b76d0fb232e27844187a4f10a"
+    },
+    "scenario-modeler-server.html": {
+      "bytes": 344,
+      "sha256": "5516bcd2d36d1eb7740771e21a7ba5e24eabb95defcc36aa975c131665467bab"
+    },
+    "shadertoy-server.html": {
+      "bytes": 969,
+      "sha256": "ae7f8b32e3026034563371d5a31bcfdaff7b183bc15b3b4528fee2f2c128b415"
+    },
+    "sheet-music-server.html": {
+      "bytes": 787,
+      "sha256": "96c3ac05272568e6182c2ca9b57eb28f6c4c1919cb5a06e213aad3a23da12bea"
+    },
+    "system-monitor-server.html": {
+      "bytes": 1797,
+      "sha256": "ecb8befb188f0208513b8b5f106f2136cdcaaf9756fdb744f84439e88c66e611"
+    },
+    "threejs-server.html": {
+      "bytes": 388,
+      "sha256": "7c0dc67d0902227558cccdd4b39d55d867dfdd8f4651e2e4ae66610dc1892e22"
+    },
+    "transcript-server.html": {
+      "bytes": 1635,
+      "sha256": "776cd008707b182c99535ef785668485f08829d9cd1827053819c6f5e0838510"
+    },
+    "video-resource-server.html": {
+      "bytes": 1210,
+      "sha256": "5edfd183e0ecfdccf0a3262c2c9d116f5e1a6a328d602f8821a972829b4f9dd9"
+    },
+    "wiki-explorer-server.html": {
+      "bytes": 812,
+      "sha256": "33581ad01cdb03df647148feec8cfe626eaa24425f8f346c1f48fc7173b7f41a"
+    }
+  }
+}

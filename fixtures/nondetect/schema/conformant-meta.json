@@ -1,0 +1,13 @@
+{
+  "csp": {
+    "connectDomains": ["https://api.openweathermap.org"],
+    "resourceDomains": ["https://*.mapbox.com"],
+    "frameDomains": [],
+    "baseUriDomains": []
+  },
+  "permissions": {
+    "geolocation": {}
+  },
+  "domain": "abc123.claudemcpcontent.com",
+  "prefersBorder": true
+}

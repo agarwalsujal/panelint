@@ -1,0 +1,17 @@
+<!--
+  PANE-SANDBOX-006 — the attacker's direction: the HTML invokes a capability
+  that _meta.ui.permissions never declares. Requires an actual INVOCATION,
+  not mere feature detection (SPEC-REFERENCE.md §3.2 recommends the latter).
+
+  This resource's _meta.ui.permissions (supplied out-of-band by the server,
+  not visible in this HTML file) declares nothing.
+-->
+<meta charset="utf-8">
+<title>Copy summary</title>
+<button id="copy">Copy summary</button>
+<script>
+  document.getElementById('copy').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('summary').textContent);
+  });
+</script>
+<p id="summary">Q3 revenue is up 12% year over year.</p>

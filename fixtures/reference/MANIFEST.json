@@ -1,0 +1,219 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-08-05T00:00:00.000Z",
+  "provenance": {
+    "kind": "hand-authored-reproduction",
+    "upstream": "modelcontextprotocol/ext-apps",
+    "pinnedCommit": null,
+    "statement": "These files are NOT captures of the real ext-apps example servers. They are hand-authored reproductions of the shapes recorded in docs/RULES.md § Measured false-positive pass. The real example servers are Vite projects whose served resource is a build output, so capturing them requires running six toolchains — see scripts/capture-reference.ts, which is the script that will replace these once a commit SHA is pinned."
+  },
+  "sets": {
+    "must-not-fire": {
+      "rule": "ANY SPEC, SCHEMA or RISK finding on a fixture in this set FAILS CI.",
+      "why": "Small, reviewed, hash-pinned. docs/DESIGN.md §6: the corpus is a public repo, so a blanket zero-finding gate would let anyone disable a Panelint rule by landing a PR upstream.",
+      "count": 3
+    },
+    "measured": {
+      "rule": "A finding DEMOTES AND DOCUMENTS the rule. It does not delete the rule and it does not fail CI.",
+      "why": "A RISK finding on a reference server is not by definition a false positive — RISK means \"permitted by the spec, expands attack surface\", and a reference server may legitimately do that. PANE-CSP-008 is the live example.",
+      "count": 5
+    }
+  },
+  "corpusFacts": {
+    "servers": 8,
+    "declaringCsp": 2,
+    "declaringDomain": 0,
+    "declaringPrefersBorder": 0,
+    "metaUiOnReadContentItem": 0,
+    "toolsDualWritingFlatResourceUri": "all",
+    "note": "Recorded from docs/RULES.md § Measured false-positive pass. The last two lines are the poisoned-rule guards: PANE-SPEC-006 must not flag the dual-written _meta[\"ui/resourceUri\"], and PANE-SPEC-010 must not read an absent read-level _meta.ui as a mismatch with the list-level one."
+  },
+  "fixtures": [
+    {
+      "path": "must-not-fire/basic-server-react.json",
+      "server": "basic-server-react",
+      "set": "must-not-fire",
+      "sha256": "1045301c54734e9fe9c2510e944605dd0adf9548bca9bc0b3914fc98b88c35b3",
+      "bytes": 3325,
+      "declaresCsp": false,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://basic-react/counter",
+          "contentSha256": "1adbdb7cef5559c4d9f5cc71736aabcc98dd2aeaf7ac976d473078076d5cc2ff",
+          "contentBytes": 1234,
+          "metaOn": "neither"
+        }
+      ],
+      "tools": [
+        "show_counter"
+      ],
+      "expectation": "Zero SPEC, SCHEMA or RISK findings. Any finding fails CI.",
+      "notes": "Declares no _meta.ui at all: no csp, no domain, no prefersBorder."
+    },
+    {
+      "path": "must-not-fire/basic-server-vanillajs.json",
+      "server": "basic-server-vanillajs",
+      "set": "must-not-fire",
+      "sha256": "bb69f90138642eee085138d3df3ae4418ac6a2d8ab53ed16ec0117f23192fe2e",
+      "bytes": 3961,
+      "declaresCsp": false,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://basic-vanilla/tasks",
+          "contentSha256": "d1f367cb89d4e0c32d909b9ca6d7b04abf78666a204d1b1d26786b9f7a9eb8e3",
+          "contentBytes": 1392,
+          "metaOn": "neither"
+        }
+      ],
+      "tools": [
+        "show_tasks",
+        "list_tasks"
+      ],
+      "expectation": "Zero SPEC, SCHEMA or RISK findings. Any finding fails CI.",
+      "notes": "Declares no _meta.ui at all. Includes an app-only tool (visibility [\"app\"])."
+    },
+    {
+      "path": "must-not-fire/wiki-explorer-server.json",
+      "server": "wiki-explorer-server",
+      "set": "must-not-fire",
+      "sha256": "f8ebd69d4f88edb4cf55ce16cd61ba0ab21c1bdcf7c16c49a83b4bdc6e9de5fa",
+      "bytes": 4110,
+      "declaresCsp": false,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://wiki-explorer/article",
+          "contentSha256": "7bb21251c95e7ada9e09679d9391dfbfd7c5b52aee8ab1cf62ebfa673940de5b",
+          "contentBytes": 1956,
+          "metaOn": "neither"
+        }
+      ],
+      "tools": [
+        "search_wiki"
+      ],
+      "expectation": "Zero SPEC, SCHEMA or RISK findings. Any finding fails CI.",
+      "notes": "The server does the fetching; the app renders the tool result. No connectDomains needed, and none declared."
+    },
+    {
+      "path": "measured/map-server.json",
+      "server": "map-server",
+      "set": "measured",
+      "sha256": "68e672d5d0eea3d34b53b13e6e96edd4de211a4524e3adb2a98e67d365bd29d6",
+      "bytes": 4127,
+      "declaresCsp": true,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://map/viewer",
+          "contentSha256": "de1690599785e7c1d46f5b240b4d2a78bfd93eee58274b05625c8ef7f59a2821",
+          "contentBytes": 1762,
+          "metaOn": "list-only"
+        }
+      ],
+      "tools": [
+        "show_location"
+      ],
+      "expectation": "PANE-INTEGRITY-001 at MEDIUM (below the gate) for the dynamically created CDN script with no integrity.",
+      "notes": "One of the TWO reference servers that declare _meta.ui.csp. Loads CesiumJS by creating the <script> element in JavaScript, because a static <script src> does not work inside a srcdoc iframe."
+    },
+    {
+      "path": "measured/threejs-server.json",
+      "server": "threejs-server",
+      "set": "measured",
+      "sha256": "bb3a94444ce0bc0e38d3ac67303a4c794f514d31489c20566a39fd718d5e8e79",
+      "bytes": 4289,
+      "declaresCsp": false,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://threejs/scene",
+          "contentSha256": "9541ecb600b8c9d0a91ab3a35439fc6f36957e1630f7e6ec93b967d2d3b36465",
+          "contentBytes": 2139,
+          "metaOn": "neither"
+        }
+      ],
+      "tools": [
+        "render_scene"
+      ],
+      "expectation": "PANE-DOM-002 at INFO for new Function. PANE-OVERLAY-001 must NOT fire on .error-overlay: it fills the viewport but declares no z-index.",
+      "notes": "new Function(...) is the app core execution mechanism, not an anomaly."
+    },
+    {
+      "path": "measured/shadertoy-server.json",
+      "server": "shadertoy-server",
+      "set": "measured",
+      "sha256": "d4a420ccaf8c199da6f54bd692a979db5ca649e40c5abab8f85ed072b1aac241",
+      "bytes": 4233,
+      "declaresCsp": false,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://shadertoy/canvas",
+          "contentSha256": "ffc29292a686bf9c4338785e3b684c5a860090336c5d0252bc4d02565575a351",
+          "contentBytes": 2036,
+          "metaOn": "neither"
+        }
+      ],
+      "tools": [
+        "run_shader"
+      ],
+      "expectation": "No gate-eligible findings. The x-shader/* script blocks do not parse as JavaScript; that is a parseError on the script, never a scan failure.",
+      "notes": "GLSL in <script type=\"x-shader/x-fragment\"> exercises the non-JS script-type path."
+    },
+    {
+      "path": "measured/pdf-server.json",
+      "server": "pdf-server",
+      "set": "measured",
+      "sha256": "5f75265d9153b85912d357ba844c51429185892f616268322464ab60fe9f6efc",
+      "bytes": 8146,
+      "declaresCsp": true,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://pdf/viewer",
+          "contentSha256": "782cf8f8deb87aba6af6ef509ebcd919c64174f7763e6393a08d9a6c53ba8873",
+          "contentBytes": 5611,
+          "metaOn": "list-only"
+        }
+      ],
+      "tools": [
+        "open_pdf"
+      ],
+      "expectation": "PANE-CSP-008 at MEDIUM for the unpkg grant. PANE-DOM-001 must NOT fire on the eleven literal innerHTML sites. PANE-OVERLAY-001 must NOT fire on .confirm-dialog or .main.fullscreen without a second signal.",
+      "notes": "The second of the two servers declaring _meta.ui.csp. unpkg carries pdf.js and its Standard-14 fonts. Eleven innerHTML assignment sites, every one a literal."
+    },
+    {
+      "path": "measured/lazy-auth-server.json",
+      "server": "lazy-auth-server",
+      "set": "measured",
+      "sha256": "d5afd7c835e8ba52fe47ea7f19cf4275404edebc22c13fcef30b5398a1e7ac78",
+      "bytes": 4587,
+      "declaresCsp": false,
+      "declaresDomain": false,
+      "declaresPrefersBorder": false,
+      "resources": [
+        {
+          "uri": "ui://lazy-auth/connect",
+          "contentSha256": "14c707e8d8c58c48c296c05c48c3dabd8e94157f90a570e30847c906e54148ec",
+          "contentBytes": 1986,
+          "metaOn": "neither"
+        }
+      ],
+      "tools": [
+        "begin_auth",
+        "check_auth_status"
+      ],
+      "expectation": "No gate-eligible findings. openLink with a non-literal URL is INFO-class capability disclosure.",
+      "notes": "No password field anywhere: the app states in copy that it never asks for one."
+    }
+  ]
+}
