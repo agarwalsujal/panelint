@@ -52,6 +52,11 @@ import { DEFAULT_LIMITS } from '../limits.js';
 import { isStrictBase64 } from '../safe/guard.js';
 import { safe, errorSummary } from '../safe/untrusted.js';
 import { extractUiMeta, extractToolUiMeta, resolveMeta } from '../parse/meta.js';
+import {
+  createMetaValidator,
+  validateResourceMeta,
+  validateToolMeta,
+} from '../parse/meta.js';
 import { sha256Bytes, sha256Resource } from './hash.js';
 import {
   CAPTURE_FORBIDDEN_KEYS,
@@ -444,7 +449,14 @@ function toResource(
   if (fromBlob) resource.fromBlob = true;
   if (metaFromList !== undefined) resource.metaFromList = metaFromList;
   if (metaFromRead !== undefined) resource.metaFromRead = metaFromRead;
-  if (resolved !== null) resource.meta = resolved;
+  if (resolved !== null) {
+    resource.meta = resolved;
+    // Validate against the vendored JSON Schema. This was hardcoded to [], so
+    // every PANE-SCHEMA rule was dead code in production — validateResourceMeta
+    // was called from test files only, and a server misspelling connectDomain
+    // got a clean report.
+    resource.schemaErrors = validateResourceMeta(createMetaValidator(), resolved);
+  }
   return resource;
 }
 
@@ -475,7 +487,13 @@ function toTool(tool: CaptureTool): ToolWithUIMeta {
     out.annotations = tool.annotations as ToolWithUIMeta['annotations'];
   }
   const meta = extractToolUiMeta(tool._meta);
-  if (meta !== undefined) out.meta = meta;
+  if (meta !== undefined) {
+    out.meta = meta;
+    // Same omission as the resource path: PANE-SCHEMA-005 checks that a tool
+    // _meta.ui carries neither csp nor permissions (the schema forbids both
+    // with {"not":{}}), and it could never fire while this was [].
+    out.schemaErrors = validateToolMeta(createMetaValidator(), meta);
+  }
   // The raw `_meta` is kept whole so the deprecated flat `ui/resourceUri` key
   // stays visible — the SDK dual-writes it, and PANE-SPEC-006/011 compares the
   // two. Normalising it away here would silently retire both rules.

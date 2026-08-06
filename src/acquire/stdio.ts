@@ -61,6 +61,11 @@ import { isStrictBase64 } from '../safe/guard.js';
 import { errorSummary, safe } from '../safe/untrusted.js';
 import { extractToolUiMeta, extractUiMeta, resolveMeta } from '../parse/meta.js';
 import {
+  createMetaValidator,
+  validateResourceMeta,
+  validateToolMeta,
+} from '../parse/meta.js';
+import {
   SafeStdioTransport,
   SPAWN_DEFAULTS,
   formatCommandEcho,
@@ -459,7 +464,9 @@ async function listAllTools(
             // `ui/resourceUri` key. The SDK DUAL-WRITES it, so its mere
             // presence is not a finding.
             ...(raw ? { rawMeta: raw } : {}),
-            schemaErrors: [],
+            // Validated, not hardcoded empty. PANE-SCHEMA-005 forbids csp and
+            // permissions on a tool _meta.ui and could never fire before this.
+            schemaErrors: ui ? validateToolMeta(createMetaValidator(), ui) : [],
           };
         });
         return {
@@ -612,7 +619,9 @@ async function readOne(
     ...(metaFromList !== undefined ? { metaFromList } : {}),
     ...(metaFromRead !== undefined ? { metaFromRead } : {}),
     ...(resolved !== null ? { meta: resolved } : {}),
-    schemaErrors: [],
+    // Validated against the vendored JSON Schema. This was [], which made every
+    // PANE-SCHEMA rule dead code on the live path too.
+    schemaErrors: resolved !== null ? validateResourceMeta(createMetaValidator(), resolved) : [],
     contentHash,
     source: SOURCE,
   };

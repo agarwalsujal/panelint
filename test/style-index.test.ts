@@ -166,7 +166,7 @@ describe('StyleIndex — limits', () => {
 describe('a negated stateful pseudo-class applies at rest', () => {
   const hides = (selector: string): boolean => {
     const html = `<!doctype html><html><head><style>${selector}{display:none}</style></head><body><p class="s">text</p></body></html>`;
-    const parsed = parseHtml(html, 'ui://t/a', DEFAULT_LIMITS);
+    const parsed = parseHtml(html, DEFAULT_LIMITS, 'ui://t/a');
     const index = buildStyleIndex(parsed.dom, DEFAULT_LIMITS, 'ui://t/a');
     const el = selectAll('p.s', parsed.dom)[0]!;
     return index.candidatesFor(el, 'display').some((c) => c.value === 'none');

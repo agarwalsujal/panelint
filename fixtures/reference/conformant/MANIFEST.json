@@ -17,7 +17,7 @@
     },
     {
       "path": "declared-csp.json",
-      "shape": "The 2-of-8 shape. Declares _meta.ui.csp.connectDomains and preferredFrameSize, identically at list and read level. The HTML actually fetches the declared origin, so a declared-but-unused finding would be wrong.",
+      "shape": "The 2-of-8 shape. Declares _meta.ui.csp.connectDomains identically at list and read level. (An earlier revision also carried preferredFrameSize, which does not exist in the schema — wiring up validation caught it.) The HTML actually fetches the declared origin, so a declared-but-unused finding would be wrong.",
       "guards": [
         "PANE-CSP-009 must not fire when the declared connect origin is genuinely contacted",
         "PANE-CSP-006 must not fire when every loaded origin is covered by a declaration",

@@ -34,11 +34,7 @@
             "connectDomains": [
               "https://api.conformant-server.test"
             ]
-          },
-          "preferredFrameSize": [
-            "640px",
-            "480px"
-          ]
+          }
         }
       }
     }
@@ -57,11 +53,7 @@
                 "connectDomains": [
                   "https://api.conformant-server.test"
                 ]
-              },
-              "preferredFrameSize": [
-                "640px",
-                "480px"
-              ]
+              }
             }
           }
         }
