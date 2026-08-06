@@ -24,8 +24,9 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -160,6 +161,99 @@ describe('results reach the Security tab even when the scan gates', () => {
       .filter((l) => l !== '' && !l.startsWith('#') && !l.startsWith('- '))
       .pop();
     expect(lastCode).toBe('exit 0');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3b. The scan step, actually executed.
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a step's `run:` body and dedent it.
+ *
+ * The assertions above check YAML text, which is why they all passed against a
+ * version of this action that aborted the moment panelint found anything. Text
+ * cannot catch a shell-semantics bug. This runs the real body.
+ */
+function runBodyAfter(marker: string): string {
+  const from = lines.findIndex((l) => l.includes(marker));
+  expect(from, `no step containing ${marker}`).toBeGreaterThan(-1);
+
+  let start = -1;
+  let indent = 0;
+  for (let i = from; i < lines.length; i++) {
+    const m = /^(\s*)run:\s*\|/.exec(lines[i] ?? '');
+    if (m) {
+      start = i + 1;
+      indent = (m[1] ?? '').length;
+      break;
+    }
+  }
+  expect(start, `no run: | block after ${marker}`).toBeGreaterThan(-1);
+
+  const body: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (line.trim() === '') {
+      body.push('');
+      continue;
+    }
+    if ((/^\s*/.exec(line)?.[0] ?? '').length <= indent) break;
+    body.push(line.slice(indent + 2));
+  }
+  return body.join('\n');
+}
+
+describe('the scan step survives a non-zero panelint exit', () => {
+  it('writes SARIF and the outputs when a finding gates', () => {
+    // GitHub runs `shell: bash` as `bash --noprofile --norc -eo pipefail`.
+    // errexit is on before the body starts, so a plain `panelint ...` that
+    // exits 1 aborts the step unless the body turns errexit off.
+    const work = mkdtempSync(join(tmpdir(), 'panelint-action-'));
+    try {
+      const bin = join(work, 'panelint');
+      writeFileSync(bin, '#!/bin/bash\necho "a finding"\nexit 1\n');
+      chmodSync(bin, 0o755);
+
+      const outputs = join(work, 'outputs.txt');
+      writeFileSync(outputs, '');
+      const script = join(work, 'step.sh');
+      writeFileSync(script, runBodyAfter('id: scan'));
+
+      const res = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', script], {
+        cwd: work,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          PATH: `${work}:${process.env['PATH'] ?? ''}`,
+          GITHUB_OUTPUT: outputs,
+          NO_COLOR: '1',
+          IN_PATH: '.',
+          IN_CAPTURE: '',
+          IN_FAIL_ON: 'high',
+          IN_ON_ERROR: 'fail',
+          IN_CONFIG: '',
+          IN_BASELINE: '',
+          IN_EXPERIMENTAL: 'false',
+          IN_SARIF: 'panelint.sarif',
+        },
+      });
+
+      // The step itself must succeed; the gate is re-raised in a later step so
+      // that the upload and summary run first.
+      expect(res.status, `step exited ${res.status}\n${res.stderr}`).toBe(0);
+
+      const written = readFileSync(outputs, 'utf8');
+      expect(written, 'exit-code was never written to $GITHUB_OUTPUT').toContain('exit-code=1');
+      expect(written).toContain('sarif-file=panelint.sarif');
+      expect(
+        existsSync(join(work, 'panelint.sarif')),
+        'SARIF was not written — upload would run against a missing file',
+      ).toBe(true);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
   });
 });
 

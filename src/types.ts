@@ -320,6 +320,22 @@ export interface RuleContext {
   diagnostic(code: DiagnosticCode, message: string, detail?: string): void;
 }
 
+/**
+ * Which inputs a rule needs before it can run.
+ *
+ * Directory mode cannot supply `_meta` — it scrapes source, and a source-level
+ * walker cannot tell a declaration from an example of one. Measured: three of
+ * 21 servers' only apparent `_meta.ui.csp` declarations were
+ * `https://api.example.com` placeholders in READMEs and tests. So a rule that
+ * needs `meta` is SKIPPED in directory mode with a diagnostic, never run
+ * against scraped values.
+ *
+ * Declared here rather than in `rules/shared/helpers.ts` because `RuleMeta`
+ * carries it, and helpers imports from this file — the other direction would
+ * be a cycle. helpers re-exports it, so rule modules are unaffected.
+ */
+export type RuleRequirement = 'meta' | 'listMeta' | 'tools' | 'content' | 'capabilities';
+
 export interface RuleMeta {
   /** Permanent, never reused. SARIF `rules[].id` is a public contract. */
   id: string;
@@ -334,6 +350,15 @@ export interface RuleMeta {
   status: RuleStatus;
   /** semver of first release. */
   since: string;
+  /**
+   * What a rule needs before it can run at all.
+   *
+   * A rule requiring `meta` cannot run in directory mode, because there is no
+   * server to ask — it is reported as skipped rather than silently passing.
+   * Declared here rather than read through a cast so the field is visible to
+   * anything that consumes the registry, including `panelint rules --json`.
+   */
+  requires?: readonly RuleRequirement[];
 }
 
 export interface Rule extends RuleMeta {

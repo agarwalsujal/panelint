@@ -442,9 +442,10 @@ function canSupply(set: ResourceSet, req: RuleRequirement): boolean {
   }
 }
 
-function requirementsOf(rule: AnyRule): RuleRequirement[] {
-  const r = (rule as { requires?: unknown }).requires;
-  return Array.isArray(r) ? (r as RuleRequirement[]) : [];
+function requirementsOf(rule: AnyRule): readonly RuleRequirement[] {
+  // `requires` is declared on RuleMeta, so this no longer needs a cast. It
+  // stays a function because a rule may legitimately omit the field.
+  return rule.requires ?? [];
 }
 
 /** Requirement order in the report is fixed, not discovery order. */

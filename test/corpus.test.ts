@@ -257,10 +257,16 @@ describe('G2 — no rule gates on a conformant server shape', () => {
       // Stricter than the gate, matching the upstream must-not-fire rule. A
       // RISK finding here is a rule reading conformant server structure as
       // risky, which is the failure GOALS.md G2 exists to prevent.
+      //
+      // The field is `ruleClass`. Only the JSON envelope renames it to `class`
+      // (src/report/json.ts), and reading `f.class` here gave undefined — so
+      // the filter kept every finding and this test asserted zero findings of
+      // ANY class, the opposite of what the comment above says. It passed only
+      // because all three fixtures happen to produce nothing.
       const { findings } = scanConformant(file);
-      const classed = findings.filter((f: Finding) => f.class !== 'INFO');
+      const classed = findings.filter((f: Finding) => f.ruleClass !== 'INFO');
       expect(
-        classed.map((f) => `${f.ruleId} (${f.class}/${f.severity})`),
+        classed.map((f) => `${f.ruleId} (${f.ruleClass}/${f.severity})`),
         `${file} produced a non-INFO finding`,
       ).toEqual([]);
     });

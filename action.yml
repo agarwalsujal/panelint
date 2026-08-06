@@ -157,6 +157,19 @@ runs:
         IN_EXPERIMENTAL: ${{ inputs.experimental }}
         IN_SARIF: ${{ inputs.sarif-file }}
       run: |
+        # `set +e` is load-bearing, not tidying.
+        #
+        # GitHub runs `shell: bash` as `bash --noprofile --norc -eo pipefail`,
+        # so errexit is ALREADY ON when this body starts, and `set -uo pipefail`
+        # does not turn it off. A gate-eligible finding makes panelint exit 1;
+        # as a plain simple command that aborted the step before `code=$?`, so
+        # the SARIF was never written, $GITHUB_OUTPUT was never populated, the
+        # upload ran against a missing file, and the gate reported exit 2
+        # ("scan error") instead of 1 ("gated").
+        #
+        # The Action was green when there was nothing to report and broken
+        # exactly when there was — the worst failure mode a scanner can have.
+        set +e
         set -uo pipefail
 
         args=(scan)
