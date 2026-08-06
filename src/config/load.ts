@@ -85,11 +85,13 @@ export interface LoadConfigOptions {
   configPath?: string;
   allowRepoConfig?: boolean;
   trustInlineSuppressions?: boolean;
+  refuseInlineSuppressions?: boolean;
 }
 
 export interface ResolveOptions {
   allowRepoConfig?: boolean;
   trustInlineSuppressions?: boolean;
+  refuseInlineSuppressions?: boolean;
   origin?: ConfigOrigin;
 }
 
@@ -100,6 +102,7 @@ export function emptyConfig(opts: ResolveOptions = {}): ResolvedConfig {
     rules: {},
     allowRepoConfig: opts.allowRepoConfig === true,
     trustInlineSuppressions: opts.trustInlineSuppressions === true,
+    refuseInlineSuppressions: opts.refuseInlineSuppressions === true,
     rejectedKeys: [],
     fatal: false,
     diagnostics: [],
@@ -299,6 +302,7 @@ export function loadConfig(opts: LoadConfigOptions): ResolvedConfig {
   const base: ResolveOptions = {
     allowRepoConfig: opts.allowRepoConfig === true,
     trustInlineSuppressions: opts.trustInlineSuppressions === true,
+    refuseInlineSuppressions: opts.refuseInlineSuppressions === true,
   };
 
   if (opts.configPath) {

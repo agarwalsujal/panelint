@@ -22,10 +22,12 @@
 import type { Node } from 'acorn';
 import type { RuleContext, SourceLocation } from '../../types.js';
 import type { ParsedScript } from '../../parse/js.js';
-import { isAbsoluteOffOrigin, originOf } from '../shared/helpers.js';
+import { isAbsoluteOffOrigin, resolveOffDocument } from '../shared/helpers.js';
 
-/** `//host…` — an authority with no scheme. `//` and `///x` are not this. */
-const SCHEME_RELATIVE = /^\/\/[^/\\\s][^\\\s]*$/;
+// The scheme-relative regex that used to live here excluded backslashes and
+// whitespace, which is exactly how `//collector.example\\c` and a host split by a
+// newline evaded every rule in this file. Classification now goes through
+// resolveOffDocument(), which resolves the way a browser does.
 
 /**
  * Is this URL off the app document?
@@ -35,10 +37,7 @@ const SCHEME_RELATIVE = /^\/\/[^/\\\s][^\\\s]*$/;
  * non-network scheme — `javascript:`, `mailto:`, `data:`, `blob:`, `about:`.
  */
 export function isOffDocument(url: string): boolean {
-  const trimmed = url.trim();
-  if (!trimmed) return false;
-  if (SCHEME_RELATIVE.test(trimmed)) return true;
-  return isAbsoluteOffOrigin(trimmed);
+  return isAbsoluteOffOrigin(url);
 }
 
 /**
@@ -49,9 +48,10 @@ export function isOffDocument(url: string): boolean {
  * every `_meta.ui.csp` entry observed in the ecosystem is https.
  */
 export function offDocumentOrigin(url: string): string | null {
-  const trimmed = url.trim();
-  if (SCHEME_RELATIVE.test(trimmed)) return originOf(`https:${trimmed}`);
-  return originOf(trimmed);
+  // A scheme-relative URL takes the document's scheme, which we do not know.
+  // resolveOffDocument resolves against an https base, which normalizes it to
+  // https — matching every `_meta.ui.csp` entry observed in the ecosystem.
+  return resolveOffDocument(url)?.origin ?? null;
 }
 
 interface DomainEntry {

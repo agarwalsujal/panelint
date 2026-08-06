@@ -14,6 +14,7 @@ import { exfil003 } from '../src/rules/exfil/exfil-003.js';
 import { exfil004 } from '../src/rules/exfil/exfil-004.js';
 import { exfil006 } from '../src/rules/exfil/exfil-006.js';
 import { exfil007 } from '../src/rules/exfil/exfil-007.js';
+import { isOffDocument, offDocumentOrigin } from '../src/rules/exfil/url-shape.js';
 
 /**
  * The PANE-EXFIL family — the channels no `_meta.ui.csp` field governs.
@@ -367,4 +368,66 @@ describe('family invariants', () => {
       expect(ids(rules.flatMap((r) => r.check(ctx).findings))).toEqual([]);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// URL spellings a browser resolves off-document but a string match does not.
+// ---------------------------------------------------------------------------
+
+/**
+ * The WHATWG URL parser treats `\` as `/` and strips tab, LF and CR before
+ * resolving. Classification used to pattern-match the raw attribute: anything
+ * starting with `/` was called same-document, and the scheme-relative regex
+ * excluded backslashes and whitespace.
+ *
+ * So every spelling below reached a foreign origin while PANE-EXFIL-001 — the
+ * CRITICAL/CERTAIN rule the catalog calls the unblockable-egress check —
+ * reported nothing. Measured before the fix: `action="/\collector.example/c"`
+ * produced 0 findings where the plain `https://` spelling produced a gating
+ * CRITICAL.
+ *
+ * These assert the classifier, not one rule, because six rules share it.
+ */
+describe('off-document classification resolves the way a browser does', () => {
+  const OFF_DOCUMENT = [
+    ['plain absolute', 'https://collector.example/c'],
+    ['scheme-relative', '//collector.example/c'],
+    ['backslash after leading slash', '/\\collector.example/c'],
+    ['double backslash', '\\\\collector.example/c'],
+    ['backslash in path', '//collector.example\\c'],
+    ['newline inside the host', '//collector.exa\nmple/c'],
+    ['tab inside the host', '//collector.exa\tmple/c'],
+    ['carriage return inside the host', '//collector.exa\rmple/c'],
+  ] as const;
+
+  for (const [name, url] of OFF_DOCUMENT) {
+    it(`treats ${name} as off-document`, () => {
+      expect(isOffDocument(url), `${JSON.stringify(url)} reaches a foreign origin`).toBe(true);
+      expect(offDocumentOrigin(url)).toBe('https://collector.example');
+    });
+  }
+
+  const SAME_DOCUMENT = [
+    ['empty', ''],
+    ['fragment', '#section'],
+    ['query', '?q=1'],
+    ['absolute path', '/submit'],
+    ['relative path', './submit'],
+    ['bare relative', 'submit'],
+  ] as const;
+
+  for (const [name, url] of SAME_DOCUMENT) {
+    it(`leaves ${name} classified as same-document`, () => {
+      expect(isOffDocument(url)).toBe(false);
+      expect(offDocumentOrigin(url)).toBeNull();
+    });
+  }
+
+  const NON_NETWORK = ['javascript:alert(1)', 'mailto:a@b.example', 'data:text/html,x', 'about:blank'];
+  for (const url of NON_NETWORK) {
+    it(`does not treat ${url.split(':')[0]}: as an off-document network target`, () => {
+      // These are handled by other rules; they are not egress over http(s).
+      expect(isOffDocument(url)).toBe(false);
+    });
+  }
 });

@@ -165,7 +165,19 @@ function lineOf(starts: readonly number[], offset: number): number {
  * server's own output, and a server's own output does not get to decide what
  * Panelint reports about it.
  */
-export function inlineSuppressionsTrusted(source: AcquireSource, trustFlag: boolean): boolean {
+export function inlineSuppressionsTrusted(
+  source: AcquireSource,
+  trustFlag: boolean,
+  refuse = false,
+): boolean {
+  // `--no-inline-suppressions` wins over everything. "A checkout the operator
+  // pointed at" is true of a developer scanning their own work and false of CI
+  // scanning a fork's pull request — there the directive lives in the diff
+  // under review. Measured: adding `<!-- panelint-disable-file -->` to a
+  // resource took a gating CRITICAL finding to exit 0, in directory mode, which
+  // is the mode the GitHub Action runs. `--trust-inline-suppressions` did not
+  // gate that, because directory mode never consulted it.
+  if (refuse) return false;
   return source === 'directory' || trustFlag === true;
 }
 
@@ -327,7 +339,7 @@ export function applyInlineSuppressions(
       continue;
     }
 
-    if (inlineSuppressionsTrusted(resource.source, config.trustInlineSuppressions)) {
+    if (inlineSuppressionsTrusted(resource.source, config.trustInlineSuppressions, config.refuseInlineSuppressions)) {
       out.honoured++;
       out.suppressed.push({
         finding,
@@ -366,7 +378,7 @@ export function applyInlineSuppressions(
     }
 
     if (scan.directives.length === 0) continue;
-    if (inlineSuppressionsTrusted(resource.source, config.trustInlineSuppressions)) continue;
+    if (inlineSuppressionsTrusted(resource.source, config.trustInlineSuppressions, config.refuseInlineSuppressions)) continue;
 
     out.ignored += scan.directives.length;
     const wouldHide = ignoredHits.get(resource.uri) ?? 0;

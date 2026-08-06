@@ -190,16 +190,59 @@ export const NON_RENDERED_TAGS = new Set([
  * is the benign case in an MCP App, and it inverts the classic web-phishing
  * heuristic that treats an empty action as suspicious.
  */
-export function isAbsoluteOffOrigin(url: string): boolean {
+/**
+ * A base the app document can never be, used to resolve candidates the way a
+ * browser will. A resolved host that is still this one means the URL stayed on
+ * the document; anything else left it.
+ */
+const RESOLUTION_BASE = 'https://document.invalid/panelint/';
+const RESOLUTION_HOST = 'document.invalid';
+
+/**
+ * Resolve a URL the way the browser rendering the app will, or null if it does
+ * not leave the document over http(s).
+ *
+ * **This must not go back to matching the raw attribute string.** The previous
+ * implementation rejected anything starting with `/` as same-document and
+ * pattern-matched `//host` with a regex that excluded backslashes and
+ * whitespace. The WHATWG URL parser treats `\` as `/` and strips tab, LF and
+ * CR, so every one of these reached a foreign origin while the rule saw a
+ * relative path:
+ *
+ *     /\collector.example/c      \\collector.example/c
+ *     //collector.example\c      //collector.exa<LF>mple/c
+ *
+ * All four resolve to `https://collector.example/…`, and all four produced zero
+ * findings from PANE-EXFIL-001 — the CRITICAL/CERTAIN rule the catalog calls
+ * the unblockable-egress check. Resolving against a sentinel base and comparing
+ * hosts is what a browser actually does, so there is no spelling to enumerate.
+ */
+export function resolveOffDocument(url: string): URL | null {
   const trimmed = url.trim();
-  if (!trimmed) return false;
-  if (trimmed.startsWith('#') || trimmed.startsWith('/') || trimmed.startsWith('?')) return false;
+  if (!trimmed) return null;
+  let resolved: URL;
   try {
-    const u = new URL(trimmed);
-    return u.protocol === 'http:' || u.protocol === 'https:';
+    resolved = new URL(trimmed, RESOLUTION_BASE);
   } catch {
-    return false;
+    return null;
   }
+  if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return null;
+  // Still on the sentinel host — the URL is relative, a fragment, or a query.
+  if (resolved.host === RESOLUTION_HOST) return null;
+  return resolved;
+}
+
+/**
+ * Is this URL absolute-or-authority-bearing, and does it leave the document?
+ *
+ * The app document's URL is `about:srcdoc`, a `blob:` URL, or an opaque origin.
+ * There is no origin to be "same" as, so every URL carrying an authority is
+ * off-document and every relative URL is same-document. That is why an empty or
+ * relative `action` is the benign case in an MCP App, and it inverts the classic
+ * web-phishing heuristic that treats an empty action as suspicious.
+ */
+export function isAbsoluteOffOrigin(url: string): boolean {
+  return resolveOffDocument(url) !== null;
 }
 
 /** Origin of an absolute URL, or null when it is not absolute http(s). */

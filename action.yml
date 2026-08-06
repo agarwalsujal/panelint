@@ -14,6 +14,8 @@
 #   --allow-spawn                 would run a fork PR's server code on a runner
 #   --http                        would let a workflow input name any URL
 #   --trust-inline-suppressions   would let the scanned bytes silence findings
+#                                 (and --no-inline-suppressions is passed always,
+#                                 because directory mode trusts them by default)
 #   --allow-repo-config           would let a config file in the tree lower
 #                                 severities on the run that is judging it
 #
@@ -192,6 +194,12 @@ runs:
         fi
 
         args+=(--fail-on "$IN_FAIL_ON" --on-error "$IN_ON_ERROR")
+        # Refuse panelint-disable comments. Directory mode trusts them by
+        # default on the reasoning that a checkout is operator-controlled —
+        # false in CI reviewing a fork, where the comment sits in the diff
+        # under review. One <!-- panelint-disable-file --> took a gating
+        # CRITICAL to exit 0 before this was passed.
+        args+=(--no-inline-suppressions)
         if [ -n "$IN_CONFIG" ]; then args+=(--config "$IN_CONFIG"); fi
         if [ -n "$IN_BASELINE" ]; then args+=(--baseline "$IN_BASELINE"); fi
         if [ "$IN_EXPERIMENTAL" = "true" ]; then args+=(--experimental); fi

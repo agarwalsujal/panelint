@@ -48,20 +48,29 @@ export const paneSpec007 = defineSetRule({
     if (uiResources.length === 0) return [];
     const subject = uiResources[0]!.uri;
 
-    if (!set.declaresUiExtension) {
-      return [
-        makeSetFinding({
-          rule: paneSpec007,
-          resourceUri: subject,
-          message:
-            `Server serves ${uiResources.length} ui:// resource${uiResources.length > 1 ? 's' : ''} ` +
-            'but never declared the io.modelcontextprotocol/ui extension at initialize. A host ' +
-            'has no signal that these resources are MCP Apps.',
-          jsonPointer: '/capabilities/io.modelcontextprotocol~1ui',
-          path: 'capabilities/ui-extension',
-        }),
-      ];
-    }
+    // A server that did not declare the extension is NOT a violation, and this
+    // rule used to say it was — at class SPEC, severity MEDIUM, confidence
+    // HIGH, so it gated at `--fail-on medium`.
+    //
+    // The requirement does not exist. The extension block in the spec's
+    // capability negotiation is shown inside an `initialize` REQUEST, i.e. the
+    // client's capabilities; `mimeTypes` is REQUIRED of the client. The only
+    // normative server text is "Servers SHOULD check client capabilities before
+    // registering UI-enabled tools". The schema has McpUiClientCapabilities,
+    // McpUiHostCapabilities and McpUiAppCapabilities and no server equivalent,
+    // the official SDK exposes no helper for a server to declare it, and not
+    // one of the reference example servers does — every one constructs
+    // `new McpServer({ name, version })` with no capabilities argument.
+    //
+    // So this fired on every server built the way the specification's own code
+    // sample shows. That is the twelfth member of the eleven-rule class
+    // CLAUDE.md §4 records, and it shipped in 0.1.0. The reference corpus could
+    // not catch it: test/corpus.test.ts synthesizes ResourceSets with no
+    // capabilities, so `requires: ['capabilities']` skips this rule entirely.
+    //
+    // The ID stays and the rule stays — the second branch below is real, and
+    // rule IDs are permanent.
+    if (!set.declaresUiExtension) return [];
 
     const declared = set.declaredMimeTypes ?? [];
     const coversMcpApp = declared.some((m) => {

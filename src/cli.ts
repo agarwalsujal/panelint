@@ -87,6 +87,12 @@ program
   )
   .option('--allow-repo-config', 'let a config file in the scanned tree lower severities', false)
   .option(
+    '--no-inline-suppressions',
+    'refuse every panelint-disable comment, including in directory mode. Directory mode ' +
+      'trusts them by default because a checkout is usually the operator\'s own — that is ' +
+      'false in CI reviewing a fork, where the comment is in the diff under review.',
+  )
+  .option(
     '--allow-repo-baseline',
     'permit a baseline file that lives inside the scanned directory. Off by default: a ' +
       'baseline accepts findings, and every field it matches on is printed by ' +
@@ -143,6 +149,7 @@ async function runScan(
     ...(opts['config'] ? { configPath: String(opts['config']) } : {}),
     allowRepoConfig: Boolean(opts['allowRepoConfig']),
     trustInlineSuppressions: Boolean(opts['trustInlineSuppressions']),
+    refuseInlineSuppressions: opts['inlineSuppressions'] === false,
   });
 
   // A baseline inside the scanned tree is a suppression file the scanned
@@ -232,7 +239,7 @@ async function runScan(
   const color = opts['color'] === false ? false : undefined;
   process.stdout.write(renderReport(report, format, color));
 
-  return selectExitCode(suppression.findings, errors, failOn, onError);
+  return selectExitCode(suppression.findings, errors, failOn, onError, diagnostics);
 }
 
 function renderReport(report: ScanReport, format: string, color: boolean | undefined): string {

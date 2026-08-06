@@ -12,7 +12,13 @@
  * nothing is checked.
  */
 
-import { SEVERITY_ORDER, type Finding, type Severity, type ScanError } from './types.js';
+import {
+  SEVERITY_ORDER,
+  type Finding,
+  type Severity,
+  type ScanError,
+  type ScanDiagnostic,
+} from './types.js';
 
 /** True when `severity` is at or above `threshold`. */
 export function meetsSeverity(severity: Severity, threshold: Severity): boolean {
@@ -73,10 +79,34 @@ export function selectExitCode(
   errors: ScanError[],
   failOn: Severity,
   onError: OnError,
+  diagnostics: readonly ScanDiagnostic[] = [],
 ): ExitCode {
   if (onError === 'fail' && errors.length > 0) return 2;
+  // A limit stopped the scan before it saw everything, so "0 findings" is not
+  // an absence of findings — it is an absence of analysis.
+  if (onError === 'fail' && diagnostics.some((d) => d.code === 'LIMIT_EXCEEDED')) return 2;
   if (findings.some((f) => isGating(f, failOn))) return 1;
   return 0;
+}
+
+/**
+ * Did a limit stop this scan from seeing everything?
+ *
+ * Every `LIMIT_EXCEEDED` in the tree is a `ScanDiagnostic`, and `selectExitCode`
+ * used to branch on `errors` alone — so a truncated scan exited 0 with "0
+ * findings reported", indistinguishable from a clean one. DESIGN.md §4 had
+ * always specified the opposite: "2 — scan error: could not reach server,
+ * malformed input, **or a limit exceeded**".
+ *
+ * That made truncation a silencing primitive an attacker chooses. Measured: a
+ * 2 MB comment appended to a hostile app made a CRITICAL form-action finding
+ * vanish at exit 0, and 600 `<div>` strings inside an HTML comment tripped the
+ * nesting ceiling on markup that nests three levels deep. It is also not
+ * theoretical in aggregate — 60 of 391 repositories in the first census run hit
+ * a limit, and 56 of those reported zero findings while counting as clean.
+ */
+export function scanWasTruncated(diagnostics: readonly ScanDiagnostic[]): boolean {
+  return diagnostics.some((d) => d.code === 'LIMIT_EXCEEDED');
 }
 
 /** The findings that actually gate, for the report's summary line. */

@@ -523,9 +523,26 @@ describe('PANE-SPEC-007 — server-side extension declaration', () => {
     expect(paneSpec007.checkSet(set, [])).toEqual([]);
   });
 
-  it('fires when ui:// resources are served without the extension declared', () => {
+  it('does NOT fire when a server never declared the extension', () => {
+    // This asserted the opposite, and the opposite was wrong. There is no
+    // server-side requirement to declare the extension:
+    //
+    //   - The extension block in the spec's capability negotiation appears
+    //     inside an `initialize` REQUEST — the client's capabilities. The
+    //     REQUIRED `mimeTypes` is required OF THE CLIENT.
+    //   - The only normative server text is "Servers SHOULD check client
+    //     capabilities before registering UI-enabled tools".
+    //   - schema.json has McpUiClientCapabilities, McpUiHostCapabilities and
+    //     McpUiAppCapabilities, and no server equivalent.
+    //   - @modelcontextprotocol/ext-apps exposes no helper for a server to
+    //     declare it, and every reference example server constructs
+    //     `new McpServer({ name, version })` with no capabilities argument.
+    //
+    // So the rule fired, at class SPEC and gate-eligible at --fail-on medium,
+    // on every server written the way the specification's own sample shows.
+    // It shipped that way in 0.1.0.
     const set = setOf({ declaresUiExtension: false, resources: [resourceStub('ui://s/view')] });
-    expect(ids(paneSpec007.checkSet(set, []))).toEqual(['PANE-SPEC-007']);
+    expect(paneSpec007.checkSet(set, [])).toEqual([]);
   });
 
   it('fires when the extension is declared but mimeTypes omits the MCP App type', () => {

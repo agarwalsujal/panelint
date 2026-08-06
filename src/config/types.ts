@@ -116,6 +116,15 @@ export interface ResolvedConfig {
   allowRepoConfig: boolean;
   /** Same reasoning. Defaults to off; only a CLI flag turns it on. */
   trustInlineSuppressions: boolean;
+  /**
+   * Refuse every inline directive regardless of mode.
+   *
+   * Directory mode trusted them unconditionally on the reasoning that a
+   * checkout is operator-controlled. That is false in CI reviewing a fork: the
+   * directive lives in the diff under review, and one
+   * `<!-- panelint-disable-file -->` took a gating CRITICAL to exit 0.
+   */
+  refuseInlineSuppressions: boolean;
   /** CLI-only keys that appeared in the file. Non-empty implies `fatal`. */
   rejectedKeys: string[];
   /** The config is unusable and the CLI must exit 2 rather than scan on. */

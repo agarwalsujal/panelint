@@ -85,10 +85,19 @@ for (const file of files) {
     findings,
     gating: findings.filter(gateEligible),
     diagnostics: r.diagnostics ?? [],
+    // A scan that hit a limit stopped before it saw everything, so its zero is
+    // an absence of analysis rather than an absence of findings. Counting it in
+    // the denominator understates the rate.
+    truncated: (r.diagnostics ?? []).some((d) => d.code === "LIMIT_EXCEEDED"),
   });
 }
 
 const withResources = rows.filter((r) => r.resolved > 0);
+const truncatedRows = rows.filter((r) => r.truncated);
+const completeRows = rows.filter((r) => !r.truncated);
+const completeGating = completeRows.filter((r) => r.gating.length > 0);
+const completeRate =
+  completeRows.length > 0 ? (completeGating.length / completeRows.length) * 100 : 0;
 
 // ---------------------------------------------------------------------------
 // Aggregate
@@ -181,6 +190,7 @@ running servers serve, and no number here should be read as one.
 | Resources resolved | ${rows.reduce((n, r) => n + r.resolved, 0)} |
 | Resources declared but not statically resolvable | ${rows.reduce((n, r) => n + Math.max(0, r.declared - r.resolved), 0)} |
 | Scans that failed outright | ${scanFailures} |
+| **Scans a limit truncated** | **${truncatedRows.length} (${pct(truncatedRows.length, rows.length)})** |
 
 ## 3. Findings by class
 
@@ -206,6 +216,13 @@ A finding only breaks someone's build if it is **gate-eligible**: confidence \`C
 class not \`INFO\`, not experimental, at or above the threshold.
 
 > **${reposWithGating.length} of ${rows.length} repositories (${gatingRate.toFixed(1)}%) produced at least one gate-eligible finding.**
+
+**That denominator includes ${truncatedRows.length} scans a limit cut short**, which stopped before seeing
+everything and therefore report an absence of analysis rather than an absence of findings. Excluding
+them: **${completeGating.length} of ${completeRows.length} completely-scanned repositories
+(${completeRate.toFixed(1)}%)**. The second number is the honest one; the first is reported alongside it
+because dropping ${truncatedRows.length} repositories from a published population statistic without
+saying so would be the worse error.
 
 The project's own kill criterion said to stop if that number came in under ~5% — a well-evidenced
 "this ecosystem is fine" being a genuine contribution and a cheaper one. ${

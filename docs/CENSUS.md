@@ -39,6 +39,7 @@ running servers serve, and no number here should be read as one.
 | Resources resolved | 403 |
 | Resources declared but not statically resolvable | 1429 |
 | Scans that failed outright | 0 |
+| **Scans a limit truncated** | **60 (15.3%)** |
 
 ## 3. Findings by class
 
@@ -62,6 +63,13 @@ A finding only breaks someone's build if it is **gate-eligible**: confidence `CE
 class not `INFO`, not experimental, at or above the threshold.
 
 > **16 of 391 repositories (4.1%) produced at least one gate-eligible finding.**
+
+**That denominator includes 60 scans a limit cut short**, which stopped before seeing
+everything and therefore report an absence of analysis rather than an absence of findings. Excluding
+them: **14 of 331 completely-scanned repositories
+(4.2%)**. The second number is the honest one; the first is reported alongside it
+because dropping 60 repositories from a published population statistic without
+saying so would be the worse error.
 
 The project's own kill criterion said to stop if that number came in under ~5% — a well-evidenced
 "this ecosystem is fine" being a genuine contribution and a cheaper one. **It came in under 5%.** That result stands as published, and it argues the problem is more theoretical than the thesis assumed.

@@ -105,3 +105,58 @@ describe('selectExitCode — DESIGN.md §4', () => {
     expect(selectExitCode([], [], 'HIGH', 'fail')).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Truncation must not read as cleanliness.
+// ---------------------------------------------------------------------------
+
+/**
+ * The gap this closes: `test/gate.test.ts` tested `selectExitCode` against
+ * errors only, and `test/analyze.test.ts` asserted each limit produces a
+ * diagnostic. Nothing composed the two, so nobody noticed that all eleven
+ * `LIMIT_EXCEEDED` sites in the tree are diagnostics and `selectExitCode`
+ * branched on `errors` alone.
+ *
+ * A truncated scan therefore exited 0 with "0 findings reported" — identical
+ * output to a clean one. That is a silencing primitive an attacker picks:
+ * appending a 2 MB comment to a hostile app made a CRITICAL form-action finding
+ * disappear at exit 0. DESIGN.md §4 always said code 2 covers "a limit
+ * exceeded"; the code did not.
+ */
+describe('a limit that stopped the scan is not a clean result', () => {
+  const limitDiag = { code: 'LIMIT_EXCEEDED' as const, message: 'maxFileBytes exceeded' };
+  const otherDiag = { code: 'UNRESOLVED_URI' as const, message: 'not statically resolvable' };
+
+  it('exits 2 when a limit was hit and nothing was found', () => {
+    expect(selectExitCode([], [], 'HIGH', 'fail', [limitDiag])).toBe(2);
+  });
+
+  it('exits 2 even when the findings would not have gated', () => {
+    // The danger is precisely the quiet case: no findings, no errors, and a
+    // scan that never saw the bytes.
+    expect(selectExitCode([], [], 'CRITICAL', 'fail', [limitDiag])).toBe(2);
+  });
+
+  it('still exits 0 on a complete scan with unrelated diagnostics', () => {
+    expect(selectExitCode([], [], 'HIGH', 'fail', [otherDiag])).toBe(0);
+  });
+
+  it('still exits 0 on a complete scan with no diagnostics at all', () => {
+    expect(selectExitCode([], [], 'HIGH', 'fail', [])).toBe(0);
+  });
+
+  it('respects --on-error warn, which is what that flag is for', () => {
+    expect(selectExitCode([], [], 'HIGH', 'warn', [limitDiag])).toBe(0);
+  });
+
+  it('does not mask a real gating finding under --on-error warn', () => {
+    const gating = {
+      ruleId: 'PANE-EXFIL-001',
+      ruleClass: 'RISK',
+      severity: 'CRITICAL',
+      confidence: 'CERTAIN',
+      experimental: false,
+    } as unknown as Parameters<typeof selectExitCode>[0][number];
+    expect(selectExitCode([gating], [], 'HIGH', 'warn', [limitDiag])).toBe(1);
+  });
+});
