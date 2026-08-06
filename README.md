@@ -39,6 +39,35 @@ into arbitrary command execution. Panelint never sets `shell: true`.
 
 ---
 
+## In CI
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+steps:
+  - uses: actions/checkout@v5
+  - uses: agarwalsujal/panelint@v1
+```
+
+**Read this before trusting a green check:** a directory scan skips 35 of the 93 rules, including
+every `PANE-CSP` rule. Those rules need `_meta.ui`, the tool list, and server capabilities, none of
+which exist in a file on disk. The report says which rules were skipped and why, and so does the
+job summary.
+
+To cover them, record a capture once on your own machine and replay it in CI — the action never
+spawns anything:
+
+```bash
+panelint capture --allow-spawn -o panelint.capture.json -- node ./dist/server.js
+```
+
+Full input surface, permissions, and the flags the action deliberately cannot pass:
+[docs/ACTION.md](docs/ACTION.md).
+
+---
+
 ## What it checks
 
 | Class | Example finding | Confidence |
@@ -126,6 +155,7 @@ have a threat model.
 | [docs/RULES.md](docs/RULES.md) | The full rule catalog — 93 rules |
 | [docs/SPEC-COVERAGE.md](docs/SPEC-COVERAGE.md) | Every checkable spec requirement mapped to a rule, or to a reason there is none |
 | [docs/DESIGN.md](docs/DESIGN.md) | Architecture, data model, and the scanner's own threat model |
+| [docs/ACTION.md](docs/ACTION.md) | The GitHub Action — inputs, permissions, and what a green check does not mean |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting, and the disclosure policy for findings in other people's servers |
 
 ## Status

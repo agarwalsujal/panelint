@@ -1,0 +1,254 @@
+# Panelint as a GitHub Action.
+#
+# Composite rather than a bundled JS action, deliberately. A JS action needs
+# committed build output, and this repository's own threat model cites
+# eslint-config-prettier as the supply-chain precedent — a generated ~1.3 MB
+# bundle in a public security tool, re-diffed unreadably on every dependency
+# bump, is that precedent with our name on it. A composite action runs the same
+# binary the user runs locally, so there is one code path and one thing to test.
+# The cost, stated plainly: every run pays an npm install.
+#
+# What this action deliberately CANNOT do, because the absences are the security
+# design:
+#
+#   --allow-spawn                 would run a fork PR's server code on a runner
+#   --http                        would let a workflow input name any URL
+#   --trust-inline-suppressions   would let the scanned bytes silence findings
+#   --allow-repo-config           would let a config file in the tree lower
+#                                 severities on the run that is judging it
+#
+# There is no input for any of them, and test/action.test.ts asserts that the
+# composed command line cannot contain one.
+
+name: Panelint
+description: >-
+  Scan MCP Apps (SEP-1865) UI resources for spec violations, over-broad CSP
+  declarations, and DOM-present human-invisible content.
+author: Panelint
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  path:
+    description: >-
+      Directory to scan. Also passed as --path-prefix, because file paths in
+      SARIF are relative to the scan root while GitHub resolves them against the
+      repository root.
+    required: false
+    default: '.'
+  capture:
+    description: >-
+      A recorded capture file to replay instead of scanning a directory.
+      Directory mode cannot supply _meta, tools, or capabilities, so it skips 35
+      of 93 rules — every PANE-CSP rule among them. If you want CSP coverage in
+      CI, record a capture with `panelint capture` and point this at it.
+    required: false
+    default: ''
+  fail-on:
+    description: 'critical | high | medium | low | info'
+    required: false
+    default: 'high'
+  on-error:
+    description: 'fail | warn — how a scan error affects the exit code'
+    required: false
+    default: 'fail'
+  config:
+    description: Path to a Panelint config file.
+    required: false
+    default: ''
+  baseline:
+    description: Path to a baseline file of already-accepted findings.
+    required: false
+    default: ''
+  experimental:
+    description: >-
+      Include experimental rules. They can never affect the exit code — the gate
+      formula excludes them — so this only adds findings to the report.
+    required: false
+    default: 'false'
+  upload-sarif:
+    description: >-
+      Upload results to GitHub code scanning. Requires `security-events: write`,
+      and on a private repository requires GitHub Advanced Security.
+    required: false
+    default: 'true'
+  sarif-file:
+    description: Where to write the SARIF file.
+    required: false
+    default: 'panelint.sarif'
+  category:
+    description: >-
+      Code scanning category, used to correlate alerts across runs. Give each
+      Panelint invocation in a workflow a distinct value.
+    required: false
+    default: 'panelint'
+  version:
+    description: >-
+      npm version specifier to install. Pinned rather than `latest` by default:
+      a security tool that silently changes its rule set between runs turns a
+      green check into a moving target.
+    required: false
+    default: '0.1.0'
+  node-version:
+    description: >-
+      Node version to set up for the scan. Note that this action calls
+      setup-node, which affects later steps in the same job.
+    required: false
+    default: '22'
+  working-directory:
+    description: Directory to run from.
+    required: false
+    default: '.'
+
+outputs:
+  sarif-file:
+    description: Path to the SARIF file that was written.
+    value: ${{ steps.scan.outputs.sarif-file }}
+  exit-code:
+    description: The scan's exit code (0 clean, 1 gated, 2 scan error).
+    value: ${{ steps.scan.outputs.exit-code }}
+  findings:
+    description: Total number of findings reported.
+    value: ${{ steps.scan.outputs.findings }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # Every input below is passed through the environment, never interpolated
+    # into the script body. A workflow is free to wire an input to
+    # github.event.pull_request.title or any other attacker-controlled string,
+    # and `${{ }}` inside `run:` is textual substitution before bash ever sees
+    # it — that is script injection, and shipping it in a security scanner would
+    # be its own vulnerability.
+    - name: Install Panelint
+      shell: bash
+      env:
+        PANELINT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        # Refuse anything that is not a plain version or dist-tag before it
+        # reaches a package specifier.
+        if ! printf '%s' "$PANELINT_VERSION" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+          echo "::error::invalid version input"
+          exit 2
+        fi
+        npm install --global --no-audit --no-fund "panelint@${PANELINT_VERSION}"
+
+    - name: Scan
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        # Report files are read by humans and by the job summary. ANSI escapes
+        # in either is noise.
+        NO_COLOR: '1'
+        IN_PATH: ${{ inputs.path }}
+        IN_CAPTURE: ${{ inputs.capture }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        IN_ON_ERROR: ${{ inputs.on-error }}
+        IN_CONFIG: ${{ inputs.config }}
+        IN_BASELINE: ${{ inputs.baseline }}
+        IN_EXPERIMENTAL: ${{ inputs.experimental }}
+        IN_SARIF: ${{ inputs.sarif-file }}
+      run: |
+        set -uo pipefail
+
+        args=(scan)
+        if [ -n "$IN_CAPTURE" ]; then
+          args+=("$IN_CAPTURE")
+        else
+          args+=("$IN_PATH")
+          # Only meaningful when the scan root is not the repository root.
+          if [ "$IN_PATH" != "." ]; then
+            args+=(--path-prefix "$IN_PATH")
+          fi
+        fi
+
+        args+=(--fail-on "$IN_FAIL_ON" --on-error "$IN_ON_ERROR")
+        if [ -n "$IN_CONFIG" ]; then args+=(--config "$IN_CONFIG"); fi
+        if [ -n "$IN_BASELINE" ]; then args+=(--baseline "$IN_BASELINE"); fi
+        if [ "$IN_EXPERIMENTAL" = "true" ]; then args+=(--experimental); fi
+
+        # The human-readable run. This one owns the exit code.
+        panelint "${args[@]}" --format text
+        code=$?
+
+        # And the machine-readable one, for upload. Its exit code is the same by
+        # construction; it is captured only so a SARIF write failure is not
+        # mistaken for a clean scan.
+        panelint "${args[@]}" --format sarif > "$IN_SARIF"
+        sarif_code=$?
+        if [ "$sarif_code" -eq 2 ] && [ "$code" -ne 2 ]; then
+          echo "::error::panelint failed to write SARIF (exit $sarif_code)"
+          code=2
+        fi
+
+        findings=$(node -e '
+          const fs = require("node:fs");
+          try {
+            const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            process.stdout.write(String((s.runs?.[0]?.results ?? []).length));
+          } catch { process.stdout.write("0"); }
+        ' "$IN_SARIF")
+
+        {
+          echo "exit-code=$code"
+          echo "findings=$findings"
+          echo "sarif-file=$IN_SARIF"
+        } >> "$GITHUB_OUTPUT"
+
+        exit 0
+
+    # `always()` is the whole point. Uploading only on success means findings
+    # never reach the Security tab on exactly the runs where findings exist.
+    - name: Upload SARIF
+      if: ${{ always() && inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.working-directory }}/${{ inputs.sarif-file }}
+        category: ${{ inputs.category }}
+
+    - name: Summary
+      if: ${{ always() }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        OUT_FINDINGS: ${{ steps.scan.outputs.findings }}
+        OUT_CODE: ${{ steps.scan.outputs.exit-code }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        IN_CAPTURE: ${{ inputs.capture }}
+      run: |
+        set -uo pipefail
+        {
+          echo "### Panelint"
+          echo
+          echo "- findings: ${OUT_FINDINGS:-unknown}"
+          echo "- exit code: ${OUT_CODE:-unknown} (0 clean, 1 gated, 2 scan error)"
+          echo "- threshold: \`--fail-on ${IN_FAIL_ON}\`"
+          if [ -z "$IN_CAPTURE" ]; then
+            echo
+            echo "Directory mode reads source files only. It cannot supply \`_meta\`,"
+            echo "tools, or capabilities, so it skips 35 of 93 rules — including every"
+            echo "\`PANE-CSP\` rule. **A clean directory scan is not a CSP audit.**"
+            echo "Record a capture with \`panelint capture\` to cover them."
+          fi
+          echo
+          echo "Panelint reports properties of a content hash at a point in time."
+          echo "It issues no verdict about a server or a vendor."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    # Re-raise last, so the upload and the summary both run first.
+    - name: Apply the gate
+      if: ${{ always() }}
+      shell: bash
+      env:
+        OUT_CODE: ${{ steps.scan.outputs.exit-code }}
+      run: |
+        set -uo pipefail
+        exit "${OUT_CODE:-2}"
