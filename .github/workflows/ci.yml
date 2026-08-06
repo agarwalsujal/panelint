@@ -32,10 +32,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 20.10.0 is the floor declared in package.json engines. Testing the
-        # floor exactly is the point — "20.x" would silently drift upward and
-        # stop proving the floor works.
-        node: ['20.10.0', '22', '24']
+        # The suite cannot run on the declared engines floor: vitest's rolldown
+        # dependency imports `styleText` from node:util, which landed in 20.12.
+        # That is a devDependency constraint, not a constraint on the shipped
+        # CLI — so the floor is proven by the `engines-floor` job below, which
+        # runs the packed artifact rather than the suite. Do not "fix" this by
+        # raising engines; that would overstate what the published package
+        # needs.
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v5
 
@@ -89,3 +93,43 @@ jobs:
       # Packs, installs into an empty directory, and runs the CLI from there.
       # `npm test` proves the source works; only this proves the tarball does.
       - run: npm run test:pack
+
+  engines-floor:
+    name: runs on the declared engines floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Build on a modern Node — the toolchain's requirements are not the
+      # published package's requirements.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - name: Pack the artifact
+        run: npm pack --pack-destination "$RUNNER_TEMP"
+
+      # Then drop to the exact floor in package.json engines and run what a
+      # user would actually install. This is the job that makes ">=20.10.0" a
+      # tested claim instead of an assumption. Pin the patch: "20.x" would
+      # drift upward and quietly stop testing the floor.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.10.0'
+
+      - name: Install and run the published CLI on Node 20.10.0
+        run: |
+          set -euo pipefail
+          node --version
+          mkdir -p "$RUNNER_TEMP/floor"
+          cd "$RUNNER_TEMP/floor"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "$RUNNER_TEMP"/panelint-*.tgz
+          ./node_modules/.bin/panelint --version
+          ./node_modules/.bin/panelint rules --json > /dev/null
+          # Capture replay is the path that reads schema/schema.json off disk.
+          cp "$GITHUB_WORKSPACE/fixtures/capture/valid.json" ./capture.json
+          ./node_modules/.bin/panelint scan ./capture.json --no-color --fail-on critical
+          ./node_modules/.bin/panelint scan "$GITHUB_WORKSPACE/fixtures/dirscan/basic" --no-color
