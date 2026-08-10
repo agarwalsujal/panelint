@@ -19,12 +19,10 @@
  */
 
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const FINDINGS = join(ROOT, 'census', 'findings');
-const CORPUS = join(ROOT, 'census', 'raw', 'corpus.json');
+import { ROOT, FINDINGS, CORPUS } from './paths.mjs';
+
 const PUBLIC_OUT = join(ROOT, 'docs', 'CENSUS.md');
 const PRIVATE_OUT = join(FINDINGS, 'BY-REPOSITORY.md');
 

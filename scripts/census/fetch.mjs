@@ -19,14 +19,9 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const RAW = join(ROOT, 'census', 'raw');
-const REPOS = join(RAW, 'repos');
-const CORPUS = join(RAW, 'corpus.json');
-const LOG = join(RAW, 'fetch-log.json');
+import { RAW, REPOS, CORPUS, FETCH_LOG as LOG } from './paths.mjs';
 
 /** A tree larger than this is a monorepo or a model dump; not worth the disk. */
 const MAX_TARBALL_BYTES = 80 * 1024 * 1024;

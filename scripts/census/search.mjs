@@ -34,12 +34,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { join, dirname } from 'node:path';
-
-const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const OUT_DIR = join(ROOT, 'census', 'raw');
-const OUT = join(OUT_DIR, 'corpus.json');
+import { RAW as OUT_DIR, CORPUS as OUT } from './paths.mjs';
 
 /**
  * The two independent signals. Neither is a superset of the other.

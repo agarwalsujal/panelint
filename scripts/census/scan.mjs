@@ -33,12 +33,10 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const REPOS = join(ROOT, 'census', 'raw', 'repos');
-const OUT = join(ROOT, 'census', 'findings');
+import { ROOT, REPOS, FINDINGS as OUT } from './paths.mjs';
+
 const CLI = join(ROOT, 'dist', 'cli.js');
 
 if (!existsSync(CLI)) {
