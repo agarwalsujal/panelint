@@ -111,9 +111,25 @@ panelint scan packages/my-server --format sarif --path-prefix packages/my-server
 - `security-events: write` is required for the upload. Without it the upload step fails.
 - **Private repositories need GitHub Advanced Security** for code scanning. Without it, set
   `upload-sarif: false` — the exit code and the job summary still gate the build.
-- **Fork pull requests** get a read-only token, so the upload is skipped. Configure the scan on
-  `pull_request_target` only if you understand what that exposes; the safer pattern is to let fork
-  PRs gate on the exit code alone.
+- **Fork pull requests: this document previously claimed the upload is skipped. It is not, and
+  nothing in the action ever skipped it.** That sentence was wrong for four releases, and the
+  correction is being written rather than the behaviour changed, because the underlying question is
+  not settled. `github/codeql-action/upload-sarif` does not call the public
+  `POST /code-scanning/sarifs` endpoint that requires `security-events: write`; it calls
+  `PUT /repos/:owner/:repo/code-scanning/analysis`, which by GitHub's own guidance does not require
+  write permission for pull requests. If that holds, the upload **succeeds** on a fork PR and adding
+  a skip would delete results from the run where they matter most.
+
+  We have not measured it. Until someone records a real fork-PR run, treat the outcome as unknown:
+  either the upload succeeds, or the step fails loudly with a 403. It will not fail silently, and
+  the exit code gates the build either way. If a 403 is what you see, set `upload-sarif: false` and
+  gate on the exit code.
+- `pull_request_target` runs with the base repository's secrets and a writable token. Configure the
+  scan there only if you understand what that exposes — in particular, `actions/checkout` defaults
+  to the **base** ref on that event, so the safe-looking configuration scans already-merged code and
+  always passes, and the configuration that actually scans the PR requires
+  `ref: github.event.pull_request.head.sha`, which is the classic pwn-request. The safer pattern is
+  to let fork PRs gate on the exit code alone.
 
 ## 6. Ordering
 

@@ -330,6 +330,26 @@ export function replayCapture(capture: CaptureFile, options: CaptureLoadOptions 
     });
   }
 
+  // A tool may reference an app resource the listing omits — apps.mdx L395
+  // permits it, and `acquireStdio` reads those. Replay had no equivalent sweep,
+  // so the same server scanned from a capture produced NO_RESOURCES_FOUND at
+  // exit 0. A capture cannot invent content that was never recorded, but it
+  // must not report the gap as an absence of resources.
+  for (const tool of capture.toolsList) {
+    const uri = extractToolUiMeta(tool._meta)?.resourceUri;
+    if (typeof uri !== 'string' || !isUiUri(uri)) continue;
+    if (readSeen.has(uri) || listByUri.has(uri)) continue;
+    diagnostics.push({
+      code: 'UNRESOLVED_URI',
+      resourceUri: safe(uri, SANITIZE_CAPS.uri),
+      message: 'resource referenced by a tool, but neither listed nor read in this capture',
+      detail:
+        'The specification permits a server to serve a tool-referenced app resource without ' +
+        'listing it. Re-record the capture with a current Panelint so the read is captured — ' +
+        'nothing in this report describes that resource.',
+    });
+  }
+
   if (resources.length === 0 && listByUri.size === 0) {
     diagnostics.push({
       code: 'NO_RESOURCES_FOUND',
@@ -516,7 +536,10 @@ function overBudget(uri: string, observed: number, ceiling: number): ScanDiagnos
     code: 'LIMIT_EXCEEDED',
     resourceUri: uri,
     message: `maxResourceBytes exceeded: ${observed} > ${ceiling}`,
-    detail: 'The resource was not analysed. Raise --max-resource-bytes if the input is trusted.',
+    detail:
+      'The resource was not analysed, so a zero-finding result for it is an absence of ' +
+      'analysis rather than an absence of findings. This ceiling is fixed for this build ' +
+      'and cannot be changed from the command line.',
   };
 }
 

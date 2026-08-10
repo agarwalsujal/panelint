@@ -6,8 +6,10 @@ assistants.**
 *MCP server security covers the tools. MCP Apps security covers the HTML.*
 
 MCP servers can now ship interactive HTML that Claude, VS Code Copilot, Goose, Postman, and
-M365 Copilot render directly in the conversation. 275+ servers already do it, including Metabase,
-Firebase, dbt Labs, Notion, and Mapbox.
+M365 Copilot render directly in the conversation — Metabase, Firebase, dbt Labs, Notion, and Mapbox
+among them. Public code search finds **2365+ repositories** carrying MCP Apps code, and that is a
+floor rather than a count: four query partitions hit GitHub's 1000-result-per-query ceiling
+([docs/CENSUS.md](docs/CENSUS.md) § 1).
 
 That HTML arrives from a third party and renders inside a surface the user completely trusts.
 The MCP Apps specification requires sandboxing, CSP declarations, and permission declarations —
@@ -50,6 +52,12 @@ steps:
   - uses: actions/checkout@v5
   - uses: agarwalsujal/panelint@v1
 ```
+
+**If `@v1` fails to resolve, that release has not shipped yet.** The Action installs `panelint` from
+npm by version, so the moving `v1` tag is only ever created or advanced *after* the matching npm
+publish succeeds — pointing it at an unpublished build would hand every consumer a broken action,
+and pointing it at `0.1.x` would make `@v1` mean a release with a known evasion. Check
+[the tags](https://github.com/agarwalsujal/panelint/tags), or pin an exact version.
 
 **Read this before trusting a green check:** a directory scan skips 35 of the 93 rules, including
 every `PANE-CSP` rule. Those rules need `_meta.ui`, the tool list, and server capabilities, none of
@@ -160,10 +168,14 @@ have a threat model.
 
 ## Status
 
-**Implemented and green. Not yet published to npm.**
+**Implemented and green.** All **93 catalogued rules** are implemented and registered, and
+`npm run typecheck`, `npm run build` and `npm test` are clean.
 
-All **93 catalogued rules** are implemented and registered, and `npm run typecheck`, `npm run build`
-and `npm test` are clean. Install from source for now:
+**Do not run `0.1.x`.** It contains a working evasion of the entire `PANE-HIDDEN` family: `:not()`
+nesting at even parity is the identity selector, every browser renders it, and `0.1.x` dropped the
+rule with no diagnostic. That release also has seventeen other ways a resource could be scanned and
+reported clean without being examined. All eighteen are described in [CHANGELOG.md](CHANGELOG.md).
+Upgrade to `0.2.0` or later, or build from source:
 `npm ci && npm run build && node dist/cli.js scan ./your-server`.
 
 The false-positive gate is the part worth checking before you trust any of the above.
@@ -173,10 +185,20 @@ any of them. [test/never-fire.test.ts](test/never-fire.test.ts) holds one guard 
 pattern that must never be flagged. A separate test asserts the corpus scan is not vacuous, because
 a gate that silently stopped scanning would also pass.
 
-What is not done: npm publication, the ecosystem census described in
-[docs/GOALS.md](docs/GOALS.md) G5, and HTTP transport (stdio, directory, and recorded captures all
-work). Rules that would need a rendering engine are capped below `CERTAIN` by design and say so in
-the report.
+What is not done: HTTP transport (stdio, directory, and recorded captures all work). Rules that
+would need a rendering engine are capped below `CERTAIN` by design and say so in the report.
+
+The ecosystem census described in [docs/GOALS.md](docs/GOALS.md) G5 **has run**, and the result did
+not support the thesis. **16 of 391 repositories (4.1%), or 14 of the 331 fully scanned (4.2%),
+produced a gate-eligible finding.** The project's own kill criterion said to stop below roughly 5%.
+It came in under 5%, and that argues the problem is more theoretical than this README's framing
+assumes.
+
+Read [docs/CENSUS.md](docs/CENSUS.md) § 1 before quoting any of those numbers in either direction:
+the run was directory mode, so 35 of the 93 rules never executed — including every `PANE-CSP` rule —
+and 63.7% of the repositories resolved zero resources. It measures what is in public source, not
+what servers serve. A 21-server hand-scan with the full rule set found defects at a far higher rate,
+and almost all of them were broken apps rather than attacks.
 
 The specification and rule catalog were re-verified on 2026-08-04 against primary sources — the
 published JSON Schema read field-by-field, and the `csp_evaluator`, `ajv`, and
@@ -200,7 +222,7 @@ Named to sit in the family the audience already recognizes — `eslint`, `stylel
 code, not a scanner that accuses vendors. Most findings will be a forgotten CSP field, not an
 attack. A linter is what that calls for.
 
-`panelint` is unclaimed on npm and GitHub as of 2026-08-04.
+The name is claimed: `panelint` on npm, and this repository on GitHub.
 
 *Previously "Skylight" — dropped on discovering [skylight.io](https://www.skylight.io/) is Tilde's
 Rails profiler, an established developer tool with the npm name and the .io domain.*

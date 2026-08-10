@@ -231,6 +231,58 @@ describe('PANE-HIDDEN-002 — opacity:0 or near-zero on text', () => {
     expect(findings(paneHidden002, html)[0]!.severity).toBe('HIGH');
   });
 
+  /**
+   * The other half of the pair above, and the more expensive one to get wrong.
+   *
+   * `you must` sat in the same list as `SYSTEM:` and was tested BEFORE the
+   * fade-in demotion could run, so an ordinary toast produced a gate-eligible
+   * HIGH at the default threshold. A finding on conformant code is the worst
+   * bug this project has (CLAUDE.md §3), and this is the most common toast and
+   * form-validation idiom in web UI.
+   */
+  it('does not gate on an ordinary toast whose copy happens to say "you must"', () => {
+    const copy = 'You must confirm your email address before you can invite teammates.';
+    const html = `<style>.toast{opacity:0;transition:opacity .3s}.toast.show{opacity:1}</style>`
+      + `<div class="toast" role="status">${copy}</div>`;
+    const f = findings(paneHidden002, html);
+    expect(f).toHaveLength(1);
+    expect(f[0]!.severity).toBe('LOW');
+    expect(gating(f)).toHaveLength(0);
+  });
+
+  /**
+   * The safety half of the split, and the reason it is ordered the way it is.
+   *
+   * `scaleHiddenFinding` returns on model-directed phrasing BEFORE it reaches
+   * the fade-in demotion. Move that block below `if (animated)` and the two
+   * second-person tests above still pass, while `transition:opacity .3s`
+   * becomes a one-line demotion for any injection payload — the evasion the
+   * module header warns about. Asserted here so the ordering cannot drift.
+   */
+  it('keeps a model-directed payload at HIGH even when the node is animated', () => {
+    const html = `<style>.x{opacity:0;transition:opacity .3s;animation:fade 1s}</style>`
+      + `<div class="x">${IMPERATIVE}</div>`;
+    const f = findings(paneHidden002, html);
+    expect(f[0]!.severity).toBe('HIGH');
+    expect(gating(f)).toHaveLength(1);
+  });
+
+  it('keeps a model-directed payload at HIGH when it also contains second-person copy', () => {
+    // Both tiers match. The model-directed tier must win, or adding a polite
+    // sentence to a payload would buy the fade-in demotion.
+    const text = `You must read this. ${IMPERATIVE}`;
+    const html = `<style>.x{opacity:0;transition:opacity .3s}</style><div class="x">${text}</div>`;
+    expect(findings(paneHidden002, html)[0]!.severity).toBe('HIGH');
+  });
+
+  it('still fires on second-person copy hidden with nothing to explain the hiding', () => {
+    // No transition, no animation. The demotion is earned by the fade-in, not
+    // by the phrasing — without one the signal stands.
+    const copy = 'You must confirm your email address before you can invite teammates.';
+    const html = `<style>.p{opacity:0}</style><div class="p">${copy}</div>`;
+    expect(findings(paneHidden002, html)[0]!.severity).toBe('HIGH');
+  });
+
   it('reads every candidate, so a losing @layer declaration still fires', () => {
     const html = `<style>@layer a, b;
       @layer b { .x { opacity: 0 } }

@@ -23,16 +23,15 @@ import type { Severity } from '../../types.js';
 const ACCESSIBILITY_SHAPED = /\b(sr-only|visually-?hidden|screen-?reader|a11y-only|assistive)\b/i;
 
 /**
- * Second-person imperative phrasing, the shape of an instruction aimed at a
- * model rather than prose aimed at a person.
+ * Phrasing that only makes sense as an instruction to a model.
  *
- * Deliberately narrow. "You can filter this table" is ordinary UI copy; the
- * signal is an instruction directed at an assistant about what to do next.
+ * None of these are things a product writes to a person. A fade-in is not an
+ * excuse for any of them, so an animation on the hiding property does not
+ * demote a match here.
  */
-const IMPERATIVE_PHRASING = new RegExp(
+const MODEL_DIRECTED_PHRASING = new RegExp(
   [
     '\\b(ignore|disregard|forget)\\b[^.]{0,40}\\b(previous|prior|above|earlier|all)\\b',
-    '\\byou (must|should|will|are to|need to)\\b',
     '\\b(system|assistant|user)\\s*:',
     '\\bbefore (answering|responding|replying)\\b',
     '\\b(do not|don\'t) (tell|mention|reveal|show|inform)\\b',
@@ -42,6 +41,24 @@ const IMPERATIVE_PHRASING = new RegExp(
   ].join('|'),
   'i',
 );
+
+/**
+ * Second-person obligation. Ambiguous on its own, and that is the whole point.
+ *
+ * "You must confirm your email address before you can invite teammates" is a
+ * toast, and `.toast{opacity:0;transition:opacity .3s}` is how every toast in
+ * the world is built. This pattern used to sit in the model-directed list and
+ * was tested BEFORE the animation demotion could run, so that toast produced a
+ * gate-eligible HIGH at the default threshold — a finding on conformant code,
+ * which CLAUDE.md §3 calls the worst bug this project can have.
+ *
+ * It stays a signal when the text is hidden with no animation to explain it,
+ * and defers to the fade-in demotion when there is one. Splitting the tiers is
+ * what lets that happen without also handing an attacker the one-line evasion
+ * this module's header warns about: adding a `transition` cannot demote any of
+ * the model-directed patterns above.
+ */
+const SECOND_PERSON_OBLIGATION = /\byou (must|should|will|are to|need to)\b/i;
 
 /** Animation properties that make a transient `opacity:0` the resting state. */
 const ANIMATION_PROPS = ['transition', 'transition-property', 'animation', 'animation-name'];
@@ -96,7 +113,8 @@ export function scaleHiddenFinding(input: ScaleInput): ScaleResult {
   const text = input.text.replace(/\s+/g, ' ').trim();
   const len = text.length;
   const looksAccessible = ACCESSIBILITY_SHAPED.test(input.classNames ?? '');
-  const imperative = IMPERATIVE_PHRASING.test(text);
+  const modelDirected = MODEL_DIRECTED_PHRASING.test(text);
+  const secondPerson = SECOND_PERSON_OBLIGATION.test(text);
 
   const props = new Set(Array.from(input.declaredProps ?? []).map((p) => p.toLowerCase()));
   const animated = ANIMATION_PROPS.some((p) => props.has(p));
@@ -105,9 +123,18 @@ export function scaleHiddenFinding(input: ScaleInput): ScaleResult {
     return { severity: 'INFO', rationale: 'carrier conceals no text' };
   }
 
-  if (imperative) {
+  if (modelDirected) {
     // Shape beats volume. A 40-character "SYSTEM: ignore prior instructions" is
-    // the payload this family exists to find.
+    // the payload this family exists to find, and an animation does not explain
+    // it — so this returns before the fade-in demotion, deliberately.
+    return {
+      severity: cap('HIGH', input.ceiling),
+      rationale: `hidden text is phrased as an instruction to a model (${len} chars)`,
+    };
+  }
+
+  if (secondPerson && !animated) {
+    // Hidden with nothing to explain the hiding. A fade-in would; see below.
     return {
       severity: cap('HIGH', input.ceiling),
       rationale: `hidden text contains imperative second-person phrasing (${len} chars)`,
@@ -166,9 +193,15 @@ export function scaleHiddenFinding(input: ScaleInput): ScaleResult {
   return { severity: cap('MEDIUM', input.ceiling), rationale: `${len} chars of hidden text` };
 }
 
-/** Exposed so PANE-MIMIC-008 and PANE-OVERLAY-001 can reuse the same signal. */
+/**
+ * Exposed so PANE-MIMIC-008 and PANE-OVERLAY-001 can reuse the same signal.
+ *
+ * Both tiers, deliberately. Those two rules have no animation context to weigh
+ * a fade-in against — the split above exists only to let `scaleHiddenFinding`
+ * demote second-person copy that a transition already explains.
+ */
 export function hasImperativePhrasing(text: string): boolean {
-  return IMPERATIVE_PHRASING.test(text);
+  return MODEL_DIRECTED_PHRASING.test(text) || SECOND_PERSON_OBLIGATION.test(text);
 }
 
 export function isAccessibilityShaped(classNames: string): boolean {

@@ -216,8 +216,12 @@ export function renderSarif(report: ScanReport, rules: readonly RuleMeta[]): str
             ...(header.scannedAt ? { endTimeUtc: esc(identText(header.scannedAt)) } : {}),
             toolConfigurationNotifications: report.diagnostics.map((d) => ({
               // Truncation is a warning, not a note: GitHub renders notes
-              // nowhere an operator will look.
-              level: (d.code === 'LIMIT_EXCEEDED' ? 'warning' : 'note') as 'warning' | 'note',
+              // nowhere an operator will look. `scanWasTruncated` is the
+              // authority on what counts — it reads INPUT_DEGRADED too, and
+              // hard-coding only LIMIT_EXCEEDED here meant a degraded scan
+              // reported `executionSuccessful: false` two lines above while
+              // its explanation rendered nowhere.
+              level: (scanWasTruncated([d]) ? 'warning' : 'note') as 'warning' | 'note',
               descriptor: { id: d.code },
               message: { text: esc(messageText(d.message)) },
               ...(d.resourceUri

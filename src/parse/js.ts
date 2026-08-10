@@ -56,6 +56,16 @@ export interface ParsedScript extends ScriptSource {
   startLine: number;
   /** Document column of the script's first character, for line-1 positions. */
   startCol: number;
+  /**
+   * Set when the script was refused for exceeding `maxScriptBytes`.
+   *
+   * A flag rather than a substring of `parseError`. analyze.ts has to tell a
+   * ceiling apart from a genuine syntax error, because only the ceiling is
+   * truncation — and matching on the message text meant rewording one string
+   * would silently stop the LIMIT_EXCEEDED diagnostic and restore the exit-0
+   * silent pass it exists to close.
+   */
+  overSizeCap?: true;
 }
 
 /** Collect every executable script in the document: inline blocks and handlers. */
@@ -111,6 +121,7 @@ function makeScript(
       ...base,
       ast: null,
       parseError: `script exceeds maxScriptBytes (${limits.maxScriptBytes})`,
+      overSizeCap: true,
     };
   }
   // ── Why this parses TWICE, script first ─────────────────────────────────

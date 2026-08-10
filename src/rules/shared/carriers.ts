@@ -16,8 +16,9 @@
  */
 
 import { Element } from 'domhandler';
-import type { StyleIndexLike } from '../../types.js';
+import type { DeclaredValue, StyleIndexLike } from '../../types.js';
 import { attr } from '../../parse/html.js';
+import { hasSubstitution, resolveDeclaredValues } from '../../parse/css-values.js';
 
 export type CarrierKind =
   | 'display-none'
@@ -76,7 +77,29 @@ function isZeroish(v: string): boolean {
 export function carriersOn(el: Element, styles: StyleIndexLike): Carrier[] {
   const out: Carrier[] = [];
 
-  const all = (prop: string) => styles.candidatesFor(el, prop);
+  // Every candidate is resolved before it is compared to a literal, so a value
+  // written as `var(--o)` is read as what it substitutes to. A candidate that
+  // cannot be reduced is DROPPED from the comparison and reported separately by
+  // `unevaluableProps` — never silently treated as a value that fails to match.
+  const all = (prop: string): DeclaredValue[] => {
+    const out: DeclaredValue[] = [];
+    for (const d of styles.candidatesFor(el, prop)) {
+      if (!hasSubstitution(d.value)) {
+        out.push(d);
+        continue;
+      }
+      // EVERY value the property could take, expanded into its own candidate.
+      // Collapsing to one re-created the `@layer`, `!important` and specificity
+      // evasions this module's additive-only posture exists to prevent.
+      const resolved = resolveDeclaredValues(el, styles, d.value);
+      // Unresolvable values pass through as written. They match no literal, so
+      // they raise no carrier — which is why `unevaluableProps` exists to say
+      // so out loud rather than letting the absence stand unexplained.
+      if (resolved.length === 0) out.push(d);
+      else for (const v of resolved) out.push({ ...d, value: v });
+    }
+    return out;
+  };
   const push = (kind: CarrierKind, evidence: string, losing?: boolean) => {
     out.push({ kind, evidence, ...(losing ? { losing: true } : {}) });
   };
@@ -164,3 +187,32 @@ export function isConcealed(el: Element, styles: StyleIndexLike): boolean {
 export function declaredPropNames(el: Element, styles: StyleIndexLike): string[] {
   return [...styles.declaredStyle(el).keys()];
 }
+
+/**
+ * Properties whose declared value could not be reduced to a literal.
+ *
+ * `carriersOn` drops these rather than comparing a `calc(…)` string to `none`
+ * and concluding the node is visible. Dropping them silently would be the same
+ * bug in a new place, so this reports them and the caller marks the node
+ * undecided: the cascade said something about this property and we could not
+ * read it, which is not the same as it saying nothing.
+ */
+export function unevaluableProps(el: Element, styles: StyleIndexLike): string[] {
+  const out: string[] = [];
+  for (const prop of CARRIER_PROPS) {
+    for (const d of styles.candidatesFor(el, prop)) {
+      if (!hasSubstitution(d.value)) continue;
+      if (resolveDeclaredValues(el, styles, d.value).length > 0) continue;
+      out.push(`${prop}:${d.value.trim()}`);
+      break;
+    }
+  }
+  return out;
+}
+
+/** Every property the carriers above read, for the unevaluable sweep. */
+const CARRIER_PROPS = [
+  'display', 'visibility', 'opacity', 'font-size', 'left', 'top', 'right', 'bottom',
+  'margin-left', 'margin-top', 'text-indent', 'clip', 'clip-path', 'transform', 'filter',
+  'color', '-webkit-text-fill-color', 'width', 'height', 'overflow', 'content-visibility',
+] as const;

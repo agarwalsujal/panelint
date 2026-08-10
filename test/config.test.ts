@@ -110,6 +110,26 @@ describe('config keys that are CLI-only', () => {
     }
   });
 
+  /**
+   * The set's own comment says "resource ceilings", and it used to name only
+   * the eleven keys that happen to live in src/limits.ts. Every other ceiling
+   * in the codebase — the stdio page cap, the spawn buffers, the directory
+   * walk bounds — was absent, so a config reaching for one got
+   * CONFIG_UNKNOWN_KEY and was ignored rather than rejected.
+   */
+  it('names every ceiling knob in the codebase, not only the Limits keys', () => {
+    for (const k of [
+      // src/acquire/stdio.ts
+      'maxPages', 'requestTimeoutMs', 'totalDeadlineMs',
+      // src/safe/spawn.ts
+      'maxBufferSize', 'maxSessionBytes', 'stderrCapBytes', 'termGraceMs', 'killGraceMs',
+      // src/acquire/types.ts
+      'maxFiles', 'maxTotalBytes', 'maxFileBytes', 'maxEntries', 'maxDeclaredUris',
+    ]) {
+      expect(CLI_ONLY_KEYS.has(k), `${k} is a ceiling and must be CLI-only`).toBe(true);
+    }
+  });
+
   it('hard-rejects a config-supplied server command — that is remote code execution', () => {
     const cfg = loadConfig({ root: resolve(FIXTURES, 'hostile') });
     expect(cfg.fatal).toBe(true);

@@ -112,8 +112,27 @@ export function selectExitCode(
  * theoretical in aggregate — 60 of 391 repositories in the first census run hit
  * a limit, and 56 of those reported zero findings while counting as clean.
  */
+const TRUNCATING_CODES: ReadonlySet<string> = new Set([
+  'LIMIT_EXCEEDED',
+  'INPUT_DEGRADED',
+  // "The cascade could not be read here" is the same statement as "this input
+  // was truncated", and it was reaching exit 0. `SELECTOR_SKIPPED` is what
+  // `skipSelector` raises when a selector cannot be matched — including the
+  // documented `:read-write` case, where css-select answers confidently and
+  // wrongly — and its only other mitigation, marking nodes undecided, has no
+  // consumer. `UNDECIDED_CASCADE` covers an unmodelled at-rule and a value this
+  // does not evaluate, such as `opacity:calc(0)`.
+  //
+  // Measured before adding these: every one of those reached exit 0 with the
+  // payload hidden. Measured after: neither code occurs even once across the 24
+  // real `mcp-app.html` files in the reference corpus, so this costs conformant
+  // servers nothing.
+  'SELECTOR_SKIPPED',
+  'UNDECIDED_CASCADE',
+]);
+
 export function scanWasTruncated(diagnostics: readonly ScanDiagnostic[]): boolean {
-  return diagnostics.some((d) => d.code === 'LIMIT_EXCEEDED' || d.code === 'INPUT_DEGRADED');
+  return diagnostics.some((d) => TRUNCATING_CODES.has(d.code));
 }
 
 /** The findings that actually gate, for the report's summary line. */

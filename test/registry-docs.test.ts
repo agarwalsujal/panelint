@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { ALL_RULES, RULES_BY_ID } from '../src/rules/registry.js';
+import { LIMIT_KEYS } from '../src/limits.js';
 import type { AnyRule } from '../src/types.js';
 
 const RULES_MD = readFileSync(new URL('../docs/RULES.md', import.meta.url), 'utf8');
@@ -128,5 +129,36 @@ describe('the classification model is respected', () => {
       if (!rule) continue;
       expect(['MEDIUM', 'LOW'], `${id} must not be able to gate`).toContain(rule.confidence);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The limits table in docs/DESIGN.md §10.
+// ---------------------------------------------------------------------------
+
+/**
+ * Same premise as the rule catalog above, applied to the other hand-maintained
+ * table. It had silently drifted to 8 rows against 11 `LIMIT_KEYS` —
+ * `maxScriptBytes`, `maxEvidenceChars` and `maxMetaDomains` were enforced in
+ * code and documented nowhere — and its first column named a `--max-resource-
+ * bytes` flag that has never existed on any command.
+ */
+describe('docs/DESIGN.md §10 lists every limit', () => {
+  const DESIGN_MD = readFileSync(new URL('../docs/DESIGN.md', import.meta.url), 'utf8');
+
+  const table = (() => {
+    const from = DESIGN_MD.indexOf('**Resource exhaustion.**');
+    expect(from, 'the resource-exhaustion section moved or was renamed').toBeGreaterThan(-1);
+    const to = DESIGN_MD.indexOf('####', from);
+    return DESIGN_MD.slice(from, to > from ? to : undefined);
+  })();
+
+  it('names every LIMIT_KEYS entry', () => {
+    const missing = LIMIT_KEYS.filter((k) => !table.includes(k));
+    expect(missing, `documented nowhere in §10: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('names no --max-* flag, because a limit is a property of the build', () => {
+    expect(table).not.toMatch(/--max-|--limit\b/);
   });
 });

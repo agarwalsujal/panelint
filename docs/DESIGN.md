@@ -778,19 +778,43 @@ unscheduled ways out.
 `169.254.169.254`) and non-`http(s)` schemes are rejected; cross-host redirects are refused, not
 followed.
 
-**Resource exhaustion.** Every limit lives in `src/limits.ts`, is overridable by flag, and produces
-a `LIMIT_EXCEEDED` diagnostic rather than a crash or a silent pass:
+**Resource exhaustion.** Every limit lives in `src/limits.ts`, is fixed for a given build, and
+produces a `LIMIT_EXCEEDED` diagnostic rather than a crash or a silent pass. **There is deliberately
+no flag to move one.** `ruleEngineFingerprint` covers the rule set and the pinned dependency
+versions, not the ceilings, and neither the report header nor SARIF records them; a default is still
+pinned because the Panelint version is inside that fingerprint, but an operator-settable ceiling
+would be pinned by nothing. Two reports carrying the same fingerprint and the same `contentHash`
+could then describe different amounts of analysis, and the census directory keys on exactly those
+two fields. A limit is a property of the build, so that a published report means one thing.
+
+The key column is the identifier in `DEFAULT_LIMITS`, and it is the name each diagnostic prints:
 
 | Limit | Default | Why |
 |---|---|---|
-| `--max-resource-bytes` | 8 MB | `resources/read` is uncapped by the SDK |
-| max DOM nodes | 100 k | recursive walkers blow the stack |
-| max CSS rules | 20 k | selector matching is O(rules × nodes) — 50 k × 20 k is 10⁹ `is()` calls, inside the "sub-second" claim |
-| selector-match budget | — | hard ceiling independent of the two above |
-| per-resource wall clock | 5 s | **[v3] Unenforceable as specified — see below** |
-| max total resources | 500 | |
-| max nesting depth | — | deeply nested HTML overflows recursive rules. **[v3] enforceable only pre-parse** |
-| base64 decode cap | — | `PANE-HIDDEN-010` must not decode an 80 MB data URI |
+| `maxResourceBytes` | 8 MB | `resources/read` is uncapped by the SDK |
+| `maxDomNodes` | 100 k | recursive walkers blow the stack. **[v3] report-only — knowable only after parse5 has built the tree** |
+| `maxCssRules` | 20 k | selector matching is O(rules × nodes) — 50 k × 20 k is 10⁹ `is()` calls, inside the "sub-second" claim |
+| `selectorMatchBudget` | 5 M | hard ceiling independent of the two above. Charged by estimated work, not by call count — a `:has()` call is not one unit |
+| `perResourceMs` | 5 s | **[v3] Unenforceable as specified — see below** |
+| `maxTotalResources` | 500 | |
+| `maxNestingDepth` | 500 | deeply nested HTML overflows recursive rules. **[v3] enforceable only pre-parse** |
+| `base64DecodeCap` | 256 KB | `PANE-HIDDEN-010` must not decode an 80 MB data URI |
+| `maxScriptBytes` | 2 MB | acorn on a multi-megabyte minified bundle is not worth the wall clock |
+| `maxEvidenceChars` | 120 | evidence is quoted into CI logs and SARIF; a hidden-text finding must not reproduce the payload in full (§ 10, log hygiene) |
+| `maxMetaDomains` | 256 | `domains × elements` is the cost of the `PANE-EXFIL` and `PANE-CSP` families and a server picks both factors. The largest `connectDomains` in the 391-repository census is well under 100 |
+
+`resolveLimits` does take overrides, for library embedders — who are the operator, and are not
+publishing into the directory. The CLI passes none on any path. `CLI_ONLY_KEYS` in
+`src/config/load.ts` additionally keeps every ceiling key out of `panelint.config.json`, because
+that file can sit inside the tree being scanned.
+
+The stdio page cap is **not** one of these. It is a transport option on `acquireStdio` (default 50),
+reachable from the library and not from the CLI.
+
+The remedy for a ceiling that is genuinely too low is a **measured default and a version bump**, not
+a dial. That measurement has not been made: `maxResourceBytes` accounts for nearly every limit hit
+in the 391-repository census, and the other keys essentially never fire, so it is the one worth
+re-deriving from the corpus size distribution before the next release.
 
 `fixtures/malicious/` carries a case for each.
 

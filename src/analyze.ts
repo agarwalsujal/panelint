@@ -28,7 +28,8 @@
 import { DEFAULT_LIMITS, Deadline, checkLimit } from './limits.js';
 import { contained, estimateNestingDepth, limitDiagnostic } from './safe/guard.js';
 import { errorSummary } from './safe/untrusted.js';
-import { parseHtml } from './parse/html.js';
+import { parseHtml, allElements } from './parse/html.js';
+import { unevaluableProps } from './rules/shared/carriers.js';
 import { oversizedDomainField } from './parse/meta.js';
 import { buildStyleIndex } from './parse/style-index.js';
 import { collectScripts } from './parse/js.js';
@@ -256,6 +257,29 @@ function analyzeOne(
     for (const reason of styleOutcome.value.undecidedReasons()) {
       sink.diagnostics.push({ code: 'UNDECIDED_CASCADE', message: reason, resourceUri: resource.uri });
     }
+
+    // A hiding-relevant property written through a substitution function that
+    // does not reduce to a literal. `carriersOn` resolves what it can, so this
+    // is only what is left — `calc()` arithmetic, `env()`, an unknown variable
+    // with no fallback. Comparing `calc(0)` to the string `none` and concluding
+    // the node is visible is the silent pass this whole family exists to avoid.
+    const unevaluable = new Set<string>();
+    for (const el of allElements(dom)) {
+      for (const note of unevaluableProps(el, styles)) unevaluable.add(note);
+    }
+    if (unevaluable.size > 0) {
+      sink.diagnostics.push({
+        code: 'UNDECIDED_CASCADE',
+        resourceUri: resource.uri,
+        message:
+          `${unevaluable.size} hiding-relevant declaration(s) use a value this does not ` +
+          `evaluate: ${[...unevaluable].slice(0, 5).join(', ')}`,
+        detail:
+          'Those declarations were not read as carriers, so a zero-finding result for the ' +
+          'affected nodes is undecided rather than clean. Custom properties are substituted ' +
+          'where they resolve; arithmetic and environment functions are not evaluated.',
+      });
+    }
   } else {
     sink.diagnostics.push({
       code: 'INPUT_DEGRADED',
@@ -279,6 +303,31 @@ function analyzeOne(
     });
   }
   const scripts = scriptOutcome.ok ? scriptOutcome.value : [];
+
+  // A script over `maxScriptBytes` is the one ceiling in the tree that did not
+  // produce a LIMIT_EXCEEDED. `makeScript` set `ast: null` and a `parseError`,
+  // which every AST rule correctly reports as undecided — but undecided notes
+  // do not reach `selectExitCode`, so a 2 MB comment appended to a hostile
+  // script took ten gate-eligible rules to "not run" at exit 0. Directory mode
+  // was incidentally covered by `maxFileBytes`; capture and stdio were not.
+  const overCap = scripts.filter((s) => s.overSizeCap);
+  if (overCap.length > 0) {
+    const largest = Math.max(...overCap.map((s) => Buffer.byteLength(s.code, 'utf8')));
+    sink.diagnostics.push({
+      code: 'LIMIT_EXCEEDED',
+      // House format: `${key} exceeded: ${observed} > ${ceiling}`. The observed
+      // value is the largest offending script, so "how far over?" is answerable
+      // from the report without a repro.
+      message:
+        `maxScriptBytes exceeded: ${largest} > ${limits.maxScriptBytes}` +
+        (overCap.length > 1 ? ` (${overCap.length} scripts)` : ''),
+      resourceUri: resource.uri,
+      detail:
+        'Those scripts were not parsed, so every rule that reads them is undecided rather ' +
+        'than clean. This ceiling is fixed for this build and cannot be changed from the ' +
+        'command line. Under the default --on-error fail the scan exits 2.',
+    });
+  }
 
   // ── The `_meta` ceiling ─────────────────────────────────────────────────
   // No limit key covered `_meta`, and the PANE-EXFIL and PANE-CSP families cost

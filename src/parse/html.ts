@@ -39,7 +39,21 @@ export function parseHtml(html: string, limits: Limits, resourceUri?: string): P
   const dom = parse(html, {
     treeAdapter: adapter,
     sourceCodeLocationInfo: true,
-    scriptingEnabled: false,
+    // An MCP App renders in an iframe the specification requires to carry
+    // `allow-scripts`, so the scripted parse is the one that describes what a
+    // host actually builds. This was `false`, with no reason recorded, and the
+    // difference is `<noscript>`: with scripting disabled parse5 parses its
+    // children as ELEMENTS, so a `<form action="https://…">` inside one was
+    // reported as PANE-EXFIL-001 at CRITICAL/CERTAIN — on markup that submits
+    // nowhere in any host this tool targets. The same document also produced
+    // PANE-HIDDEN-012 saying that content is not rendered, so the report
+    // contradicted itself, and CLAUDE.md reserves CERTAIN for facts that
+    // survive any rendering.
+    //
+    // PANE-HIDDEN-012 reads `<noscript>` from the raw source by regex, for
+    // insertion-mode reasons documented in that rule, so it keeps working and
+    // remains the rule that owns this content.
+    scriptingEnabled: true,
   }) as unknown as Document;
 
   let nodeCount = 0;

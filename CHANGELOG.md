@@ -4,7 +4,7 @@ Panelint reports properties of a content hash at a point in time. It never says 
 
 ## 0.2.0
 
-**Every user of 0.1.x should upgrade.** This release closes eighteen ways a resource could be
+**Every user of 0.1.x should upgrade.** This release closes forty ways a resource could be
 scanned and reported clean without actually being examined. Several were reachable by the scanned
 party — and one, `:not()` nesting, is a working evasion of the PANE-HIDDEN family in the published
 0.1.3 on npm.
@@ -140,11 +140,170 @@ in Panelint, not a documented limitation ([SECURITY.md](SECURITY.md) §1). These
 
 ### Tests
 
-1192 → 1259, across two new files. `test/silent-pass.test.ts` collects the cases above by the
+1192 → 1321, across two new files. `test/silent-pass.test.ts` collects the cases above by the
 property they share rather than by the module they live in: absence of a finding must never be
 producible by the scanned party. `test/dos.test.ts` now exists: `fixtures/malicious/dos/cases.json` had named it since
 0.1.0 and the entire resource-exhaustion control layer shipped with no executable test, which is how
 `selectorIsTractable` rotted into dead code unnoticed. It found two real bugs on its first run.
+
+Two guards added in the second round are worth naming, because both were written after the defect
+they catch was verified to slip past the existing suite: a tripwire that derives the CLI's
+registered flag set from source and fails on any imperative sentence naming a flag that is not in
+it, and a check that `docs/DESIGN.md` §10 names every `LIMIT_KEYS` entry. Each was confirmed to go
+red against the real defect before being kept.
+
+### A second audit round — thirteen more silent passes
+
+Found by a second adversarial pass over the tree the first round produced, and every one measured
+as an exit-1 → exit-0 transition before the fix and after it.
+
+- **`opacity:var(--o)` produced no carrier at all.** Every hidden-content predicate compares a
+  declared string to a literal, and a value written through a custom property matches none of them —
+  so `:root{--o:0}` two lines above the rule hid the payload with nothing anywhere signalling a
+  problem. Browsers have substituted custom properties at computed-value time since 2016.
+  `display:var(--d)` behaved the same. Values are now resolved along the ancestor chain, which is
+  where `:root` lives. What genuinely cannot be reduced — `calc()` arithmetic, `env()`, an unknown
+  variable with no fallback — is reported as `UNDECIDED_CASCADE` rather than read as absent.
+
+- **A declaration inside a nested at-rule was never bound.** 0.2.0 fixed rule-in-rule nesting;
+  `.s { color:#333; @media screen { opacity:0 } }` is the other legal shape, and the walker
+  dispatched on `rule` and `atrule` only, so postcss handed the declaration over and it went on the
+  floor. Bare declarations under a nested at-rule now bind to the parent selector.
+
+- **An unparseable `<style>` block emitted a note and continued.** The 0.2.0 notes claim
+  `INPUT_DEGRADED` covers this; it only fired when `buildStyleIndex` itself threw, and a block
+  postcss cannot parse is caught *inside* it. Deleting one `}` took every CSS-dependent rule to an
+  empty cascade at exit 0. The prefix up to the last complete rule is now recovered — which is
+  roughly what a browser keeps — every node is marked undecided, and the diagnostic is
+  `INPUT_DEGRADED`, which counts as truncation.
+
+- **One NUL byte in the first 4 KB removed a file from the scan.** The binary heuristic refused the
+  whole file, so `<!--\0-->` prepended to a template produced `resolved 0 of 1` and a diagnostic
+  claiming the content was "not statically resolvable" — when parse5 reads it identically to the
+  original. A NUL in a block comment did the same to a `.js` file Node still executes. Detection is
+  now proportional to control-byte density, and NULs are replaced rather than used to refuse the
+  read. A genuine binary is still refused, and now says so.
+
+- **Two candidate caps truncated from the front.** `MAX_INLINE_LITERALS` and
+  `MAX_DECLARATION_SITES` fill in walk order, which the scanned tree chooses, so 16 decoy literals
+  or 32 decoy files evicted the real declaration — and the report still said "all were scanned".
+  Both now emit `LIMIT_EXCEEDED`, which forces exit 2.
+
+- **A refused config silently became no config.** `loadConfig` discards every key when the file
+  names a CLI-only one, including the operator's own severity raises, and nothing checked `fatal`.
+  Adding one key to a config took a gating scan to exit 0. A refused config is now a scan error.
+
+- **Config and baseline diagnostics never reached the report.** `CONFIG_KEY_REJECTED` is the loudest
+  signal this tool produces — a scanned tree shipping `{"command": …}` is asking the scanner to
+  execute something — and it was computed and dropped in all three formats.
+
+- **Baseline containment did not cover capture mode.** The guard required a directory target, and
+  capture replay is the mode the Action documents for CI, so a baseline committed beside the capture
+  was honoured. Containment now applies to both the capture's directory and the working directory.
+
+- **`maxScriptBytes` suppressed ten rules with no diagnostic.** Every other ceiling calls
+  `checkLimit`; this one set `ast: null`, which the rules correctly report as undecided — and
+  undecided notes never reach the exit code. A 2 MB comment took a hostile script to exit 0.
+
+- **Capture replay had no tool-reference discovery.** `resources/list` is not the complete set
+  (`apps.mdx` L395), and stdio gained that sweep in this release; replay did not, so the same server
+  scanned from a capture reported `NO_RESOURCES_FOUND` at exit 0.
+
+- **`INPUT_DEGRADED` rendered as a SARIF `note`.** `scanWasTruncated` counts it as truncation, but
+  the severity mapping named only `LIMIT_EXCEEDED`, so a degraded scan reported
+  `executionSuccessful: false` while its explanation rendered where GitHub shows nothing.
+
+- **A pruned subtree was not reported.** `dist/` and `build/` are on the deny list and are exactly
+  where a TypeScript server's compiled entry point lives, so a scan printed `resolved 0 of 0` and
+  read as a complete scan of a repository with no app resources.
+
+### False positives on conformant code
+
+Both of these fired on ordinary, correct markup. That is the most expensive error this project can
+make, and neither was caught by a test.
+
+- **An ordinary toast gated the build.** `\byou (must|should|will|are to|need to)\b` sat in the
+  same list as `SYSTEM:` and `ignore previous instructions`, and was tested *before* the fade-in
+  demotion could run — so `.toast{opacity:0;transition:opacity .3s}` carrying "You must confirm your
+  email address" produced a gate-eligible HIGH at the default threshold. The pattern list is now
+  split by who the text addresses. Phrasing that only makes sense as an instruction to a model still
+  returns HIGH before any demotion, so adding a `transition` cannot launder a real payload.
+
+- **`<noscript>` content was scanned as a live DOM.** parse5 was given `scriptingEnabled: false`
+  with no reason recorded, so it parsed `<noscript>` children as elements and a fallback
+  `<form action="https://…">` — the entire point of the tag — was reported as `PANE-EXFIL-001` at
+  CRITICAL/CERTAIN. The same document also reported `PANE-HIDDEN-012` saying that content is not
+  rendered, so the report contradicted itself. An MCP App renders in an iframe the specification
+  requires to carry `allow-scripts`, so the scripted parse is now the one modelled.
+
+### Documentation that was untrue
+
+- `checkLimit` built its remedy sentence by kebab-casing the limit key, so eleven diagnostics told
+  operators to pass `--max-dom-nodes`, `--max-resource-bytes` and nine more. **None has ever existed
+  on any command.** The sentences now state the consequence instead, and a test derives the
+  registered flag set from the CLI source and fails on any imperative sentence naming a flag that is
+  not in it.
+- `docs/DESIGN.md` §10 documented 8 of the 11 limits and named one of the fictional flags.
+- `docs/ACTION.md` claimed fork pull requests skip the SARIF upload. Nothing implemented that, and
+  the premise looks wrong — `upload-sarif` does not use the endpoint that requires
+  `security-events: write`. The claim is corrected and the behaviour left alone pending a measured
+  fork-PR run.
+- `CLI_ONLY_KEYS` claimed to cover resource ceilings and listed only the eleven `Limits` keys;
+  thirteen other ceiling knobs were absent.
+
+### A third round — defects the second round's own fixes introduced
+
+Each fix above was re-attacked by an independent pass. Nine more defects fell out, and several were
+introduced by the repair rather than surviving it. They are listed because the pattern is the point:
+a fix to a silent-pass class is itself a place silent passes appear.
+
+- **Route (c) kept the first-match-wins shape route (b) had just lost.** The literal-read resolver
+  returned on the first `readFileSync("…")` that resolved. Adding
+  `const pkg = JSON.parse(readFileSync("package.json"))` above the template read took a gating
+  finding to zero at exit 0, while the report said `resolved 1 of 1` and printed `package.json` as
+  the app resource. Reading a config file before a template is also how most Python and Node servers
+  are written, so this was a systematic false negative as well as a bypass.
+
+- **Two candidate caps truncated from the front of the file.** `MAX_INLINE_LITERALS` collected every
+  literal and then kept the first sixteen — so sixteen decoys above the real template pushed it out
+  again, at exit 0, with the report claiming "all were scanned". `MAX_DECLARATION_SITES` had the
+  same shape with decoy files. Both now emit `LIMIT_EXCEEDED`.
+
+- **The baseline guard and the baseline loader resolved the same string differently.** The guard
+  resolved `--baseline b.json` against the working directory; the loader resolved it against the
+  scan root. A security control and the thing it guards must not disagree about which file they
+  mean. Resolved once now, and the working directory is a containment root in directory mode too,
+  not only for captures.
+
+- **Custom-property resolution was winner-take-all** inside a module whose entire doctrine is
+  additive-only. It collapsed the candidate set to one value with no specificity, no `!important`
+  and no layer ordering, which brought the `@layer` evasion straight back. It now returns the set of
+  values a property could take and a carrier fires if any member matches, which is the posture
+  `candidatesFor` already had.
+
+- **The resolver was an unbounded denial of service.** Cost was `candidates ^ depth`: 1.9 KB of CSS
+  ran for **137 seconds**, exceeding `perResourceMs` twenty-seven times over, because a cooperative
+  deadline cannot interrupt a synchronous recursion. Now bounded by a step budget — the same
+  measured shape as `:has()`, refused before the work rather than during it.
+
+- **Three spellings of `var()` that browsers resolve and Panelint did not**: `VAR(--o)` (CSS
+  function names are ASCII case-insensitive), `var(/**/--o)` (comments are removed at tokenization),
+  and `\76 ar(--o)` (an escaped ident). The first two now resolve; the third is treated as
+  unevaluable, which marks the node undecided rather than reading it as absent.
+
+- **The fade-in demotion never checked what was being animated.** `transition:color 0s` on a node
+  hidden at `opacity:0` — a transition that does not touch the hiding property — and
+  `animation-name:none`, which declares no animation at all, both took a gate-eligible HIGH to LOW
+  at exit 0. The demotion now requires the animated property to be one the node actually declares.
+
+- **"The cascade could not be read here" reached exit 0.** `UNDECIDED_CASCADE` and
+  `SELECTOR_SKIPPED` were not counted as truncation, so `opacity:calc(0)` and the documented
+  `:read-write` case both scanned clean. Both now count. Neither code occurs even once across the 24
+  real `mcp-app.html` files in the reference corpus, so this costs conformant servers nothing.
+
+- **`@starting-style` bound as a resting state.** It is the one at-rule that by definition describes
+  the value an element transitions *from*, so binding it reports a fade-in's start frame as a
+  hidden-content carrier. Added to the unmodelled set.
 
 ### Known and not fixed in this release
 

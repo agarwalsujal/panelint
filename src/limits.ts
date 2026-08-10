@@ -6,8 +6,25 @@
  * "the spec defers it to hosts" — that reasoning is about the *host*, and was
  * silently applied to the scanner too. It does not apply here.
  *
- * Every limit lives in this file, is overridable by flag, and produces a
+ * Every limit lives in this file, is fixed for a given build, and produces a
  * LIMIT_EXCEEDED diagnostic rather than a crash or a silent pass.
+ *
+ * **There is deliberately no flag to move one**, and the diagnostics must not
+ * offer one. `ruleEngineFingerprint` hashes the rule set and the pinned
+ * dependency versions; it does not hash the ceilings, and neither the report
+ * header nor SARIF records them. A default is still pinned, because the
+ * Panelint version is inside that fingerprint — change a default and the
+ * fingerprint changes with it. An operator-settable ceiling would be pinned by
+ * nothing, so two reports carrying the same fingerprint and the same
+ * contentHash could describe different amounts of analysis. The census
+ * directory keys on exactly those two fields.
+ *
+ * The remedy for a ceiling that is genuinely too low is therefore a measured
+ * default and a version bump, which gives every operator the same answer, and
+ * not a dial that gives each one a different answer the report cannot show.
+ *
+ * `resolveLimits` still takes overrides for library embedders, who are the
+ * operator and are not publishing into the directory. The CLI passes none.
  */
 
 import type { Limits, ScanDiagnostic } from './types.js';
@@ -47,7 +64,10 @@ export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
 export const LIMIT_KEYS = Object.keys(DEFAULT_LIMITS) as Array<keyof Limits>;
 
 /**
- * Apply flag overrides over the defaults.
+ * Apply programmatic overrides over the defaults.
+ *
+ * Reachable from the library API, never from a flag — the CLI calls this with
+ * no argument on every path, for the reason in this file's header.
  *
  * A non-positive override is rejected rather than accepted, because "0" reads
  * as "unlimited" to a user and as "reject everything" to the code — and either
@@ -58,7 +78,7 @@ export function resolveLimits(overrides: Partial<Limits> = {}): Limits {
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) continue;
     if (!LIMIT_KEYS.includes(key as keyof Limits)) {
-      throw new Error(`Unknown limit: ${key}`);
+      throw new Error(`Unknown limit: ${key}. Known limits: ${LIMIT_KEYS.join(', ')}`);
     }
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
       throw new Error(`Limit ${key} must be a positive finite number, got ${String(value)}`);
@@ -88,13 +108,11 @@ export function checkLimit(
     message: `${key} exceeded: ${observed} > ${ceiling}`,
     ...(resourceUri ? { resourceUri } : {}),
     detail:
-      'Analysis of this resource is incomplete. Raise the limit with the ' +
-      `corresponding --${kebab(key)} flag if the input is trusted.`,
+      'Analysis of this resource is incomplete, so a zero-finding result for it is an ' +
+      'absence of analysis rather than an absence of findings. This ceiling is fixed for ' +
+      'this build and cannot be changed from the command line. Under the default ' +
+      '--on-error fail the scan exits 2.',
   };
-}
-
-function kebab(s: string): string {
-  return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
 
 /** A wall-clock budget for one resource. */

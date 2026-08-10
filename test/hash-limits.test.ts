@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { sha256Resource } from '../src/acquire/hash.js';
-import { DEFAULT_LIMITS, resolveLimits, checkLimit } from '../src/limits.js';
+import { DEFAULT_LIMITS, LIMIT_KEYS, resolveLimits, checkLimit } from '../src/limits.js';
 
 /**
  * contentHash is a one-way door — the public directory, the drift re-scan, and
@@ -47,7 +47,7 @@ describe('limits', () => {
     expect(DEFAULT_LIMITS.perResourceMs).toBe(5_000);
   });
 
-  it('lets a flag override a single limit without disturbing the others', () => {
+  it('lets a library embedder override a single limit without disturbing the others', () => {
     const l = resolveLimits({ maxResourceBytes: 42 });
     expect(l.maxResourceBytes).toBe(42);
     expect(l.maxDomNodes).toBe(DEFAULT_LIMITS.maxDomNodes);
@@ -68,5 +68,33 @@ describe('limits', () => {
 
   it('returns null when the limit is respected', () => {
     expect(checkLimit('maxDomNodes', 10, DEFAULT_LIMITS, 'ui://s/v')).toBeNull();
+  });
+
+  /**
+   * The remedy sentence is built once, for every key, so a fabricated flag name
+   * here is fabricated eleven times. It used to be: the detail kebab-cased the
+   * key and told the operator to pass `--max-dom-nodes`, which has never been a
+   * flag on any command. A prose grep cannot see a templated string, so this
+   * asserts the property directly against every key there is.
+   */
+  it('names no command-line flag for any limit key, because none exists', () => {
+    for (const key of LIMIT_KEYS) {
+      const d = checkLimit(key, Number.MAX_SAFE_INTEGER, DEFAULT_LIMITS, 'ui://s/v');
+      expect(d, `checkLimit did not fire for ${key}`).not.toBeNull();
+      expect(d?.detail, `${key} names a flag`).toBeDefined();
+      // `--on-error` is real and may be named. A `--max-*` or `--limit` is not.
+      expect(d?.detail).not.toMatch(/--max-|--limit/);
+    }
+  });
+
+  it('still says the analysis is incomplete, so the fix is not just deleting the detail', () => {
+    const d = checkLimit('maxDomNodes', 200_000, DEFAULT_LIMITS, 'ui://s/v');
+    expect(d?.detail).toMatch(/incomplete/i);
+    // The sentence that matters: zero findings here is not a clean result.
+    expect(d?.detail).toMatch(/absence of analysis/i);
+  });
+
+  it('lists the known keys when an unknown one is passed', () => {
+    expect(() => resolveLimits({ notALimit: 1 } as never)).toThrow(/maxResourceBytes/);
   });
 });

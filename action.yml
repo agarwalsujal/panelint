@@ -267,6 +267,21 @@ runs:
 
     # `always()` is the whole point. Uploading only on success means findings
     # never reach the Security tab on exactly the runs where findings exist.
+    #
+    # No fork guard here, deliberately, and this is the second time that has
+    # been decided. docs/ACTION.md § 5 used to claim fork PRs "skip the upload";
+    # nothing implemented it, and a guard was written to make the claim true.
+    # The premise turned out to be unverified: `upload-sarif` does not call the
+    # public `POST /code-scanning/sarifs` that needs `security-events: write`,
+    # it calls `PUT .../code-scanning/analysis`, and GitHub's own guidance says
+    # that path does not require write permission for pull requests. If that is
+    # right, a guard silently removes code scanning from every fork PR — the
+    # run where scanning an untrusted diff matters most — while the summary
+    # asserts the upload was impossible.
+    #
+    # Between a loud failure and a silent absence of findings, this project
+    # takes the loud failure every time. Do not add the guard back without a
+    # recorded fork-PR run showing the 403. See docs/ACTION.md § 5.
     - name: Upload SARIF
       if: ${{ always() && inputs.upload-sarif == 'true' }}
       uses: github/codeql-action/upload-sarif@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3

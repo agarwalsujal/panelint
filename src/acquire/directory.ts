@@ -95,6 +95,15 @@ const HTML_LITERAL_RE =
  */
 const MAX_DECLARATION_SITES = 32;
 
+/**
+ * How many HTML literals in one file may be treated as candidates.
+ *
+ * Same bound, one level down. Taking only the FIRST literal made a decoy
+ * string above the real template a deletion rather than an addition, which is
+ * the invariant this module is supposed to hold.
+ */
+const MAX_INLINE_LITERALS = 16;
+
 interface DeclaredUri {
   uri: string;
   /** Repo-relative path of the file that declared it. */
@@ -164,6 +173,12 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
    * mattering: a decoy can add a site, but it cannot remove the real one.
    */
   const declared = new Map<string, DeclaredUri[]>();
+  /** URIs whose declaration-site list hit MAX_DECLARATION_SITES and lost sites. */
+  const sitesTruncated = new Set<string>();
+  /** Top-level names pruned by the deny list, so the report can name them. */
+  const pruned = new Set<string>();
+  /** Files skipped because their extension is not in the allowlist. */
+  let skippedByExtension = 0;
 
   const stopWalk = (key: string, observed: number, ceiling: number): boolean => {
     if (observed <= ceiling) return false;
@@ -197,7 +212,20 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
       const abs = join(dir, entry);
       const rel = relative(rootReal, abs);
 
-      if (hasDeniedSegment(rel) || hasDeniedFilename(rel)) continue;
+      if (hasDeniedSegment(rel) || hasDeniedFilename(rel)) {
+        // Counted, not silent. `dist/` and `build/` are on the deny list, and
+        // they are exactly where a TypeScript MCP server's compiled `server.js`
+        // — with its inline `registerAppResource` HTML — ends up. Pruning them
+        // is right, but a scan that printed `resolved 0 of 0` and said nothing
+        // read as a complete scan of a repository with no app resources.
+        if (hasDeniedSegment(rel)) pruned.add(toPosix(rel).split('/')[0] ?? toPosix(rel));
+        // A denied FILENAME is a skip too, and it was the one walk skip with no
+        // counter left in a change whose whole point was counting walk skips.
+        // `DENY_FILE_PATTERNS` includes `/^id_(rsa|dsa|ecdsa|ed25519)/i`, which
+        // matches an ordinary `id_rsa.js`.
+        else skippedByExtension++;
+        continue;
+      }
 
       let st;
       try {
@@ -228,6 +256,22 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
             message: `maxFileBytes exceeded: ${toPosix(rel)} was skipped`,
             detail: 'This file was not read, so anything it declares is invisible to this scan.',
           });
+        } else if (read.reason === 'EXTENSION') {
+          // Aggregated, not one per file: a repository has thousands of these
+          // and they are overwhelmingly images and lockfiles. The count is what
+          // matters — it says the walk did not read everything.
+          skippedByExtension++;
+        } else {
+          // Every other reason used to `continue` with NO diagnostic at all, so
+          // a file the scanner refused was indistinguishable from a file that
+          // said nothing. That is a deletion the scanned tree can perform.
+          diagnostics.push({
+            code: 'LIMIT_EXCEEDED',
+            message: `${toPosix(rel)} could not be read (${read.reason}) and was skipped`,
+            detail:
+              'This file was not read, so anything it declares is invisible to this scan. ' +
+              'A resource declared only here resolves to nothing.',
+          });
         }
         continue;
       }
@@ -250,11 +294,18 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
           // One file mentioning the same URI twice adds nothing to resolve
           // from, and MAX_DECLARATION_SITES bounds a tree that mentions one URI
           // in thousands of files.
-          if (
-            sites.length < MAX_DECLARATION_SITES &&
-            sites[sites.length - 1]?.declaredIn !== relPosix
-          ) {
+          //
+          // The cap fills in walk order, so 32 decoy files that merely NAME the
+          // URI evict the one that declares it — measured, 31 decoys exit 1 and
+          // 32 exit 0. Dropping is recorded so the resolution loop can turn it
+          // into LIMIT_EXCEEDED instead of a silent clean report.
+          if (sites[sites.length - 1]?.declaredIn === relPosix) {
+            continue;
+          }
+          if (sites.length < MAX_DECLARATION_SITES) {
             sites.push(site);
+          } else {
+            sitesTruncated.add(uri);
           }
           continue;
         }
@@ -269,6 +320,23 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
   };
 
   walk(rootReal);
+
+  // What the walk chose not to look at. Without this the ratio line reads as a
+  // complete scan: a TypeScript server whose only built artefact is `dist/`
+  // reported `resolved 0 of 0` and named nothing it had skipped.
+  if (pruned.size > 0 || skippedByExtension > 0) {
+    const parts: string[] = [];
+    if (pruned.size > 0) parts.push(`pruned ${[...pruned].sort().join(', ')}`);
+    if (skippedByExtension > 0) parts.push(`${skippedByExtension} file(s) of unscanned type`);
+    diagnostics.push({
+      code: 'CAPABILITY_NOT_DECLARED',
+      message: `Directory walk skipped part of the tree: ${parts.join('; ')}.`,
+      detail:
+        'Build output and dependency directories are not read, and only source-shaped ' +
+        'extensions are. A server whose only app HTML lives in a build artefact resolves ' +
+        'nothing here — scan the running server or a capture instead.',
+    });
+  }
 
   if (declared.size === 0) {
     diagnostics.push({
@@ -317,16 +385,45 @@ export function scanDirectory(root: string, options: DirectoryScanOptions = {}):
     };
 
     addCandidate(resolveBySiblingFile(rootReal, decl, opts.maxFileBytes));
+    let literalsTruncated = false;
     for (const site of sites) {
-      addCandidate(resolveByInlineLiteral(site, fileText));
-      addCandidate(resolveByLiteralReadCall(rootReal, site, fileText, opts.maxFileBytes));
+      const literals = resolveByInlineLiterals(site, fileText);
+      if (literals.truncated) literalsTruncated = true;
+      for (const r of literals.resolved) addCandidate(r);
+
+      const reads = resolveByLiteralReadCalls(rootReal, site, fileText, opts.maxFileBytes);
+      if (reads.truncated) literalsTruncated = true;
+      for (const r of reads.resolved) addCandidate(r);
+    }
+
+    // Either cap dropped a candidate the scanned tree chose the position of, so
+    // whatever was dropped is exactly what an attacker would want dropped. This
+    // is LIMIT_EXCEEDED rather than a note because `scanWasTruncated` reads it
+    // and `--on-error fail` then exits 2 — the analysis is incomplete, and an
+    // incomplete analysis must not be reportable as clean.
+    if (literalsTruncated || sitesTruncated.has(decl.uri)) {
+      diagnostics.push({
+        code: 'LIMIT_EXCEEDED',
+        resourceUri: safe(decl.uri, SANITIZE_CAPS.uri),
+        message: literalsTruncated
+          ? `more than ${MAX_INLINE_LITERALS} HTML literals declare this URI in one file`
+          : `more than ${MAX_DECLARATION_SITES} files declare this URI`,
+        detail:
+          'Candidates past the cap were not resolved, so a zero-finding result for this URI is ' +
+          'an absence of analysis rather than an absence of findings. Both caps fill in walk ' +
+          'order, which the scanned tree chooses.',
+      });
     }
 
     if (candidates.length > 1) {
       diagnostics.push({
         code: 'UNRESOLVED_URI',
         resourceUri: safe(decl.uri, SANITIZE_CAPS.uri),
-        message: `${candidates.length} different contents resolve for this URI; all were scanned.`,
+        message:
+          `${candidates.length} different contents resolve for this URI; ` +
+          (literalsTruncated || sitesTruncated.has(decl.uri)
+            ? 'those that fit within the caps were scanned.'
+            : 'all were scanned.'),
         detail:
           'A sibling file, an inline literal and a literal-path read call disagreed. Which one the ' +
           'server actually serves is not decidable from source, so none was preferred.',
@@ -410,34 +507,79 @@ function resolveBySiblingFile(root: string, decl: DeclaredUri, maxBytes: number)
  * and treating it as one is how directory mode would start reporting on HTML
  * that no server ever serves.
  */
-function resolveByInlineLiteral(decl: DeclaredUri, files: Map<string, string>): Resolved | null {
+function resolveByInlineLiterals(
+  decl: DeclaredUri,
+  files: Map<string, string>,
+): { resolved: Resolved[]; truncated: boolean } {
+  const empty = { resolved: [], truncated: false };
   const source = files.get(decl.declaredIn);
-  if (!source) return null;
+  if (!source) return empty;
 
   // The lazy `[\s\S]{0,200000}?` in HTML_LITERAL_RE scans up to 200 KB from
   // every `"<html` looking for a close tag. In a file with many opens and no
   // close, that is quadratic (512 KB of `'"<html '` → 16s). A match is
   // impossible without a close tag, so its absence is a linear-time bail.
-  if (!/<\/(?:html|body)>/i.test(source)) return null;
+  if (!/<\/(?:html|body)>/i.test(source)) return empty;
 
-  HTML_LITERAL_RE.lastIndex = 0;
-  const match = HTML_LITERAL_RE.exec(source);
-  if (!match?.[1]) return null;
-
-  return { content: match[1].trim(), filePath: decl.declaredIn, route: 'inline-literal' };
+  // EVERY literal, not the first one.
+  //
+  // `exec` took the earliest match in the file, and the earliest match is a
+  // position a contributor controls: one line above the real template, in the
+  // very file that declares the URI, `const help = "<html><body><h1>ok</h1>…"`
+  // became the resource. Measured before this changed — 3 gating findings went
+  // to 0 while the report still said `resolved 1 of 1` and printed a 37-byte
+  // resource in place of the real 250-byte one.
+  //
+  // The caller hashes and de-duplicates these and warns when more than one
+  // distinct content survives, so returning several is cheap and adding a
+  // literal can only add a candidate.
+  // Truncation here is reported, never silent. Capping at N and stopping would
+  // rebuild the very bug this function exists to fix: the cap fills from the
+  // FRONT of the file, so N decoys above the real template push it out again —
+  // measured at exactly MAX_INLINE_LITERALS, 1 gating finding went to 0 at
+  // exit 0. A bound the scanned party can reach must cost it an exit 2, not buy
+  // it a clean report.
+  const out: Resolved[] = [];
+  let truncated = false;
+  for (const match of source.matchAll(HTML_LITERAL_RE)) {
+    const content = match[1]?.trim();
+    if (!content) continue;
+    if (out.length >= MAX_INLINE_LITERALS) {
+      truncated = true;
+      break;
+    }
+    out.push({ content, filePath: decl.declaredIn, route: 'inline-literal' });
+  }
+  return { resolved: out, truncated };
 }
 
 /** (c) a readFile / open / slurp call with a literal path argument. */
-function resolveByLiteralReadCall(
+function resolveByLiteralReadCalls(
   root: string,
   decl: DeclaredUri,
   files: Map<string, string>,
   maxBytes: number,
-): Resolved | null {
+): { resolved: Resolved[]; truncated: boolean } {
+  const empty = { resolved: [], truncated: false };
   const source = files.get(decl.declaredIn);
-  if (!source) return null;
+  if (!source) return empty;
 
-  LITERAL_READ_RE.lastIndex = 0;
+  // EVERY read call, not the first that resolves.
+  //
+  // This was the same first-match-wins shape that route (b) had, and the fix
+  // there did not reach here. The earliest `readFileSync("…")` in the file won
+  // outright, and its position is a position a contributor controls:
+  //
+  //   const pkg  = JSON.parse(fs.readFileSync("package.json", "utf8"));
+  //   const html = fs.readFileSync("templates/board.html", "utf8");
+  //
+  // Measured — one added line took 1 gating finding to 0 at exit 0, while the
+  // report said `resolved 1 of 1` and printed package.json as the app
+  // resource. It is not only an attack: reading a config file before a
+  // template is how most Python and Node servers are written, so first-match
+  // was also a systematic false negative.
+  const out: Resolved[] = [];
+  let truncated = false;
   for (const match of source.matchAll(LITERAL_READ_RE)) {
     const candidate = match[2];
     if (!candidate) continue;
@@ -451,9 +593,17 @@ function resolveByLiteralReadCall(
     const read = readContained(contained.absolute, maxBytes);
     if (!read.ok) continue;
 
-    return { content: read.text, filePath: toPosix(contained.relative), route: 'literal-read-call' };
+    if (out.length >= MAX_INLINE_LITERALS) {
+      truncated = true;
+      break;
+    }
+    out.push({
+      content: read.text,
+      filePath: toPosix(contained.relative),
+      route: 'literal-read-call',
+    });
   }
-  return null;
+  return { resolved: out, truncated };
 }
 
 /** Repo-relative paths are reported with forward slashes on every platform. */

@@ -453,7 +453,10 @@ async function paginate<T>(
   diagnostics.push({
     code: 'LIMIT_EXCEEDED',
     message: `${label} exceeded the ${maxPages}-page cap.`,
-    detail: 'Results are partial. Raise --max-pages if the server genuinely has more.',
+    detail:
+      'Results are partial. Resources beyond the cap were never listed, so nothing in this ' +
+      'report describes them. The cap is fixed for this build and cannot be changed from ' +
+      'the command line.',
   });
   return out;
 }

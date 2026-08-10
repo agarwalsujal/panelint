@@ -17,7 +17,7 @@
 
 import { Command } from 'commander';
 import { readFileSync, statSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { resolve as resolvePath, dirname } from 'node:path';
 
 import { scanDirectory } from './acquire/directory.js';
 import { loadCapture, captureFromResourceSet, writeCapture } from './acquire/capture.js';
@@ -35,6 +35,7 @@ import { selectExitCode, type OnError } from './exit.js';
 import { resolveLimits } from './limits.js';
 import { isInside } from './safe/paths.js';
 import { ALL_SEVERITIES, type ResourceSet, type RuleMeta, type Severity } from './types.js';
+import { messageText } from './report/types.js';
 import type { ReportResource, ScanReport, ScanMode } from './report/types.js';
 
 const PKG = JSON.parse(
@@ -114,6 +115,13 @@ async function runScan(
   const onError = parseOnError(String(opts['onError'] ?? 'fail'));
   const format = String(opts['format'] ?? 'text');
   const pathPrefix = parsePathPrefix(opts['pathPrefix']);
+  // No overrides, deliberately, and this is the file where someone will one day
+  // add the flag that seems obviously missing. `ruleEngineFingerprint` covers
+  // the rule set and the pinned dependency versions — not the ceilings. A
+  // default is pinned by the Panelint version inside that fingerprint; a flag
+  // would be pinned by nothing, so two reports carrying the same fingerprint
+  // and the same contentHash could describe different amounts of analysis, and
+  // the census directory keys on exactly those two fields. See src/limits.ts.
   const limits = resolveLimits();
 
   // ── Acquire ────────────────────────────────────────────────────────────
@@ -152,6 +160,23 @@ async function runScan(
     refuseInlineSuppressions: opts['inlineSuppressions'] === false,
   });
 
+  // A fatal config discards EVERY key, including the operator's own severity
+  // raises, and proceeding as though no config existed reported that as clean.
+  // Measured: `{"rules":{"PANE-INPUT-002":"critical"}}` gated at exit 1; adding
+  // one CLI-only key to the same file dropped the raise and exited 0. The
+  // rejection is correct — the point is that it cannot be silent. This mirrors
+  // the baseline check below, which has always returned 2.
+  if (config.fatal) {
+    for (const d of config.diagnostics) {
+      process.stderr.write(`panelint: ${d.code}: ${messageText(d.message)}\n`);
+    }
+    process.stderr.write(
+      'panelint: the config file was refused in full, so none of its keys were applied. ' +
+        'Remove the rejected key(s) and re-run.\n',
+    );
+    return 2;
+  }
+
   // A baseline inside the scanned tree is a suppression file the scanned
   // repository controls, which is the door `--allow-repo-config` and
   // `--trust-inline-suppressions` are both closed to keep shut. It was open:
@@ -162,11 +187,39 @@ async function runScan(
   // Refused by default, allowed with an explicit flag, exactly like a repo
   // config. A baseline OUTSIDE the scanned tree — the normal case, held by the
   // operator — is unaffected.
-  if (opts['baseline'] && !opts['allowRepoBaseline'] && !live && isDirectory(absolute)) {
-    const baselineAbs = resolvePath(String(opts['baseline']));
-    if (isInside(absolute, baselineAbs)) {
+  // Capture replay is the mode the Action documents for CI, and it was exempt:
+  // the guard used to require `isDirectory(absolute)`, which is false when the
+  // target is a capture file, so a baseline committed next to the capture was
+  // honoured without complaint. Both files are in the pull request, and every
+  // field a baseline entry matches on is printed by `--format json`.
+  //
+  // A capture file gets TWO roots, because neither alone is the scanned tree.
+  // The capture's own directory misses `captures/x.json` paired with
+  // `baselines/b.json`, which is two directories in one pull request. The
+  // working directory catches that — it is the repository root in CI, which is
+  // where the Action runs the CLI from. An operator holding a baseline outside
+  // both still passes, and `--allow-repo-baseline` remains the way to say the
+  // file is yours.
+  // The working directory is a root in BOTH modes. The reasoning that added it
+  // for a capture file — `captures/x.json` paired with `baselines/b.json` is
+  // two directories in one pull request — is just as true of a directory scan
+  // whose target is a subdirectory, which is the Action's monorepo layout.
+  const containmentRoots: string[] = live
+    ? []
+    : [isDirectory(absolute) ? absolute : dirname(absolute), process.cwd()];
+
+  // Resolved ONCE, and the absolute path is what everything downstream uses.
+  // The guard used to resolve against the working directory while `loadBaseline`
+  // resolved the same string against the scan root, so `--baseline b.json` had
+  // the guard inspect one file and the loader read a different one. A security
+  // control and the thing it guards must not disagree about which file they
+  // mean.
+  const baselineAbs = opts['baseline'] ? resolvePath(String(opts['baseline'])) : null;
+
+  if (baselineAbs && !opts['allowRepoBaseline'] && containmentRoots.length > 0) {
+    if (containmentRoots.some((root) => isInside(root, baselineAbs))) {
       process.stderr.write(
-        'panelint: the baseline file is inside the scanned directory, so the scanned ' +
+        'panelint: the baseline file is inside the scanned tree, so the scanned ' +
           'tree can accept its own findings. Move it outside, or pass ' +
           '--allow-repo-baseline if you control that file.\n',
       );
@@ -177,7 +230,9 @@ async function runScan(
   // A baseline that fails to load is a scan error, not an empty baseline —
   // silently proceeding with zero accepted findings would re-report everything
   // and train the operator to ignore the output.
-  const loadedBaseline = opts['baseline'] ? loadBaseline(String(opts['baseline'])) : null;
+  // `root` contains a RELATIVE baseline path under the scanned tree. It was
+  // never passed, so that branch of loadBaseline was dead code in the CLI.
+  const loadedBaseline = baselineAbs ? loadBaseline(baselineAbs) : null;
   if (loadedBaseline?.fatal) {
     process.stderr.write('panelint: the baseline file could not be read.\n');
     return 2;
@@ -197,9 +252,19 @@ async function runScan(
   // have hidden N findings"), INLINE_SUPPRESSION_MALFORMED, and
   // CONFIG_OVERRIDE_REFUSED all vanished. A scanned tree attempting to silence
   // the scanner is precisely the fact an operator needs to see.
+  //
+  // `config` and the baseline loader were left out of that same fix and had the
+  // same defect. CONFIG_KEY_REJECTED is the loudest signal this tool produces —
+  // it means the scanned tree shipped a config reaching for a CLI-only key, and
+  // `{"command": …}` is a repository asking the scanner to execute something.
+  // It was rejected correctly and then reported in no format at all, so the
+  // operator saw a clean exit 0. BASELINE_INVALID_ENTRY is the anti-collision
+  // protection firing and vanished the same way.
   const diagnostics = [
     ...set.diagnostics,
     ...analysis.diagnostics,
+    ...config.diagnostics,
+    ...(loadedBaseline?.diagnostics ?? []),
     ...suppression.diagnostics,
   ];
   const errors = [...set.errors, ...analysis.errors];
@@ -274,6 +339,7 @@ async function acquireLive(opts: Record<string, unknown>): Promise<ResourceSet> 
     // scanned repository must never be able to set this.
     allowSpawn: Boolean(opts['allowSpawn']),
     showServerStderr: Boolean(opts['showServerStderr']),
+    // No overrides — same reason as in runScan above.
     limits: resolveLimits(),
     echo: (line) => process.stderr.write(`panelint: ${line}\n`),
   });

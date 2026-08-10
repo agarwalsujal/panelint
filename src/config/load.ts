@@ -59,10 +59,21 @@ export const CLI_ONLY_KEYS: ReadonlySet<string> = new Set([
   'command', 'args', 'env', 'cwd', 'spawn', 'allowSpawn', 'allow_spawn',
   // Network target — SSRF, and a scan of somebody else's server under your name.
   'server', 'url', 'target', 'transport', 'headers', 'origin', 'timeout',
-  // Resource ceilings. Raising them is a denial-of-service against the scanner.
+  // Resource ceilings. Raising them is a denial-of-service against the scanner;
+  // lowering them truncates the scan, and a truncated scan is one that examined
+  // less than it appears to have. The eleven `Limits` keys are only some of the
+  // ceilings — this set covers every knob in the codebase that bounds work, not
+  // just the ones that happen to live in src/limits.ts, because a tripwire with
+  // holes in it reads as a tripwire.
   'limits', 'maxResourceBytes', 'maxDomNodes', 'maxCssRules', 'selectorMatchBudget',
   'perResourceMs', 'maxTotalResources', 'maxNestingDepth', 'base64DecodeCap',
   'maxScriptBytes', 'maxEvidenceChars', 'maxMetaDomains',
+  // Transport ceilings — src/acquire/stdio.ts STDIO_DEFAULTS.
+  'maxPages', 'requestTimeoutMs', 'totalDeadlineMs',
+  // Spawn ceilings — src/safe/spawn.ts SPAWN_DEFAULTS.
+  'maxBufferSize', 'maxSessionBytes', 'stderrCapBytes', 'termGraceMs', 'killGraceMs',
+  // Directory-walk ceilings — src/acquire/types.ts.
+  'maxFiles', 'maxTotalBytes', 'maxFileBytes', 'maxEntries', 'maxDeclaredUris',
   // What Panelint validates against, and what it treats as already accepted.
   'schema', 'schemaPath', 'baseline', 'baselinePath',
   // Self-granted trust.

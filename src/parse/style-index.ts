@@ -64,7 +64,11 @@ import type { DeclaredValue, Limits, ScanDiagnostic, SourceLocation, StyleIndexL
  * `@supports` block's applicability depends on the engine, and its ordering
  * interacts with layers, so it is not modelled.
  */
-const UNMODELLED_AT_RULES = new Set(['layer', 'scope', 'container', 'supports']);
+// `starting-style` is here because it is the one at-rule that by definition
+// never describes the resting style: it declares the value an element
+// transitions FROM. Binding its declarations as a resting state would report a
+// fade-in's start frame as a hidden-content carrier.
+const UNMODELLED_AT_RULES = new Set(['layer', 'scope', 'container', 'supports', 'starting-style']);
 
 /**
  * Pseudo-classes css-select answers, and answers DIFFERENTLY from a browser.
@@ -126,6 +130,8 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
   const undecidedReasonSet = new Set<string>();
   /** Selectors postcss-selector-parser could not parse. Surfaced in stage 3. */
   const unparsedSelectors: Array<{ selector: string; why: string }> = [];
+  /** `<style>` blocks postcss refused. Reported once `elements` exists. */
+  const unparsedSheets: Array<{ recovered: boolean }> = [];
   let order = 0;
   let truncated = false;
 
@@ -140,14 +146,30 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
     try {
       root = postcss.parse(css);
     } catch {
-      // A stylesheet that does not parse is a diagnostic, not a crash. The
-      // browser will do its own error recovery; we simply cannot model it.
-      diagnostics.push({
-        code: 'PARSE_FAILED',
-        message: 'A <style> block could not be parsed; its declarations are not bound to nodes.',
-        ...(resourceUri ? { resourceUri } : {}),
-      });
-      continue;
+      // A stylesheet that does not parse is a diagnostic, not a crash — but it
+      // was ONLY a diagnostic, and a `note`-level one that no exit code read.
+      // `<style>@media screen{.s{opacity:0}</style>` is what a browser
+      // auto-closes at EOF and postcss does not, so deleting one `}` took every
+      // CSS-dependent rule to an empty cascade and the scan to exit 0. The
+      // 0.2.0 notes claim INPUT_DEGRADED covers this; it only fired when
+      // `buildStyleIndex` itself threw, and this catch is inside it.
+      //
+      // Recover the prefix up to the last complete rule, which is roughly what
+      // the browser keeps. Binding those is widening, and widening is safe by
+      // this module's design: `candidatesFor` is additive, so a recovered
+      // declaration can raise a finding and can never suppress one.
+      const cut = css.lastIndexOf('}');
+      let recovered: Root | null = null;
+      if (cut > 0) {
+        try {
+          recovered = postcss.parse(css.slice(0, cut + 1));
+        } catch {
+          recovered = null;
+        }
+      }
+      unparsedSheets.push({ recovered: recovered !== null });
+      if (!recovered) continue;
+      root = recovered;
     }
 
     const baseLine = styleEl.sourceCodeLocation?.startTag?.endLine ?? 1;
@@ -245,6 +267,28 @@ export function buildStyleIndex(dom: Document, limits: Limits, resourceUri?: str
 
   // Stage 2 could not report these: `elements` did not exist yet.
   for (const { selector, why } of unparsedSelectors) skipSelector(selector, why);
+
+  // Same deferral for a `<style>` block postcss refused. INPUT_DEGRADED rather
+  // than PARSE_FAILED, because `scanWasTruncated` reads the former and the exit
+  // code has to move: when the cascade could not be read, "no finding" from a
+  // CSS-dependent rule means nothing was examined.
+  for (const { recovered } of unparsedSheets) {
+    for (const el of elements) undecidedNodes.add(el);
+    undecidedReasonSet.add(
+      'a <style> block could not be parsed, so declarations it carries are absent from the cascade',
+    );
+    diagnostics.push({
+      code: 'INPUT_DEGRADED',
+      message: recovered
+        ? 'A <style> block was truncated by a parse error; the rules before it were recovered ' +
+          'and every node is undecided.'
+        : 'A <style> block could not be parsed; its declarations are not bound to any node.',
+      ...(resourceUri ? { resourceUri } : {}),
+      detail:
+        'Which nodes the unparsed declarations would have matched is unknown, so every node is ' +
+        'marked undecided. This is truncation, not a clean result.',
+    });
+  }
 
   for (const rule of rules) {
     // `selectorIsTractable` shipped from 0.1.0 with ZERO call sites. It is the
@@ -632,7 +676,34 @@ function visit_atrule(
   // in play, so any rule in this sheet may be reordered — but we can only mark
   // the nodes we actually bind, so the marker rides on the rules inside layers.
   if (!at.nodes) return;
-  walkRules(at, [...atRuleStack, name], visit, parentSelector);
+
+  const stack = [...atRuleStack, name];
+
+  // ── Bare declarations inside a NESTED at-rule ───────────────────────────
+  // `.s { color:#333; @media screen { opacity:0 } }` is legal CSS Nesting and
+  // ships in all three engines: the `opacity:0` belongs to `.s`, conditioned on
+  // the media query. postcss hands it over as a `decl` child of the at-rule,
+  // and this walker dispatched on `rule` and `atrule` only — so it was dropped
+  // with no diagnostic. Measured: 2 gating findings to 0 at exit 0, the sibling
+  // of the "CSS nesting was never walked" fix that closed rule-in-rule.
+  //
+  // Only when there IS a parent selector. At the top level a bare declaration
+  // has no subject and postcss is already the authority on that being invalid.
+  if (parentSelector !== null) {
+    const bare = at.nodes.filter((n): n is Declaration => n.type === 'decl');
+    if (bare.length > 0) {
+      // The visitor reads `.each` for declarations and takes the selector as an
+      // argument, so a container carrying just these decls is all it needs.
+      const synthetic = {
+        each(cb: (node: { type: string }) => void): void {
+          for (const d of bare) cb(d);
+        },
+      } as unknown as PostcssRule;
+      visit(synthetic, stack, parentSelector);
+    }
+  }
+
+  walkRules(at, stack, visit, parentSelector);
 }
 
 function declLocation(d: Declaration, baseLine: number): SourceLocation | undefined {

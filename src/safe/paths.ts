@@ -187,11 +187,39 @@ export function readContained(
     }
     const slice = buf.subarray(0, read);
 
-    // A NUL byte in the first 4 KB means this is not source text. Reading it
-    // would put binary into evidence strings and into the report.
-    if (slice.subarray(0, 4096).includes(0)) return { ok: false, reason: 'BINARY' };
+    // Binary detection is PROPORTIONAL, not "contains a NUL".
+    //
+    // The goal is keeping binary out of evidence strings, and a single NUL does
+    // not make a file binary — it makes it a text file with a NUL in it. The
+    // old test refused the whole file, so `<!--\0-->` prepended to a template
+    // took it out of the scan entirely: `resolved 0 of 1`, UNRESOLVED_URI,
+    // exit 0, and the diagnostic claimed the content was "not statically
+    // resolvable" when parse5 reads it identically to the original. A NUL in a
+    // block comment did the same to a `.js` file that Node still executes.
+    //
+    // A real binary is dense with control bytes; source text is not. Sample the
+    // head, and refuse only when the density says image or archive. HTML's own
+    // tokenizer replaces U+0000 with U+FFFD, which is what happens below.
+    const sample = slice.subarray(0, 4096);
+    let control = 0;
+    for (const b of sample) {
+      if (b === 9 || b === 10 || b === 13) continue;
+      if (b === 0 || b < 8 || (b >= 14 && b <= 31) || b === 127) control++;
+    }
+    // Decisively binary, not merely suspicious. Source text sits near zero;
+    // images and archives sit far above this. The threshold is deliberately
+    // permissive because the two failure directions are not symmetric: reading
+    // a binary as text yields garbage nobody acts on, while refusing a text
+    // file deletes it from the scan, and the scanned tree picks the bytes. A
+    // 1% test refused a 93-byte source file over a single NUL.
+    if (sample.length > 0 && control / sample.length > 0.1) {
+      return { ok: false, reason: 'BINARY' };
+    }
 
-    return { ok: true, text: slice.toString('utf8'), bytes: read };
+    // `toString('utf8')` already maps a lone NUL to U+0000 rather than to a
+    // replacement character, so strip it explicitly — nothing downstream should
+    // ever quote a NUL into a report.
+    return { ok: true, text: slice.toString('utf8').replace(/\0/g, '�'), bytes: read };
   } catch {
     return { ok: false, reason: 'UNREADABLE' };
   } finally {

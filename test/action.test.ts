@@ -152,6 +152,28 @@ describe('results reach the Security tab even when the scan gates', () => {
     expect(ifLine).toContain('always()');
   });
 
+  /**
+   * A fork guard was written here and then reverted, and this test exists so
+   * the next person has to re-open the question deliberately.
+   *
+   * docs/ACTION.md § 5 claimed for four releases that fork PRs skip the upload.
+   * Nothing implemented it. The obvious repair is to make the claim true — but
+   * `upload-sarif` calls `PUT .../code-scanning/analysis`, not the public
+   * `POST /code-scanning/sarifs` that needs `security-events: write`, and that
+   * path reportedly does not require write permission on a pull request. Nobody
+   * has measured it against a real fork PR.
+   *
+   * So the condition stays unguarded: an unnecessary skip removes findings
+   * silently, and a 403 fails loudly. This project prefers the loud failure.
+   */
+  it('does not condition the upload on the event or on fork status', () => {
+    const upload = action.slice(action.indexOf('Upload SARIF'));
+    const ifLine = /if:\s*\$\{\{([^}]+)\}\}/.exec(upload)?.[1] ?? '';
+    expect(ifLine).toContain('always()');
+    expect(ifLine).toContain("inputs.upload-sarif == 'true'");
+    expect(ifLine).not.toMatch(/github\.event_name|fork/);
+  });
+
   it('re-raises the exit code in a step after the upload', () => {
     const uploadAt = action.indexOf('Upload SARIF');
     const gateAt = action.indexOf('Apply the gate');

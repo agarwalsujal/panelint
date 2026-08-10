@@ -23,6 +23,7 @@ import { Element, type AnyNode } from 'domhandler';
 import type { RuleContext, RuleMeta, Severity, StyleIndexLike } from '../../types.js';
 import { NON_RENDERED_TAGS } from '../shared/helpers.js';
 import { declaredPropNames } from '../shared/carriers.js';
+import { hasSubstitution, resolveDeclaredValues } from '../../parse/css-values.js';
 import { scaleHiddenFinding, hasImperativePhrasing, type ScaleResult } from '../shared/scale.js';
 import { attr, ancestors, allElements } from '../../parse/html.js';
 
@@ -128,6 +129,63 @@ export function signatureOf(el: Element): string {
  * identical to an injection carrier, and only volume and shape tell them apart
  * (docs/RULES.md § False-positive control).
  */
+/** Properties whose animation genuinely explains a hidden resting state. */
+const HIDING_PROPS = new Set([
+  'opacity', 'visibility', 'display', 'transform', 'filter', 'clip-path',
+  'height', 'max-height', 'width', 'max-width', 'font-size', 'color',
+]);
+
+/**
+ * Does this node animate a property that would explain its being hidden?
+ *
+ * The fade-in demotion used to fire on the mere PRESENCE of a transition or
+ * animation property, without looking at what it names. Measured: on an
+ * injection payload at `opacity:0`, both `transition:color 0s` — which does not
+ * touch the hiding property — and `animation-name:none` — which declares no
+ * animation at all — took a gate-eligible HIGH down to LOW at exit 0. That is
+ * the one-line evasion the module header warns about, bought with a
+ * declaration that does nothing.
+ *
+ * A NAMED animation counts for any property, because the keyframes are not
+ * visible here and `animation:fade 1s` genuinely can animate opacity.
+ */
+function animatesHiding(el: Element, styles: StyleIndexLike): boolean {
+  const idents = (v: string): string[] =>
+    v.split(',').map((part) => part.trim().split(/\s+/)[0]?.toLowerCase() ?? '');
+
+  // The animated property must be one this node actually declares. A node
+  // hidden at `opacity:0` that transitions `color` has not explained anything:
+  // the transition names a property that is not doing the hiding.
+  const declared = new Set(declaredPropNames(el, styles).map((p) => p.toLowerCase()));
+
+  for (const prop of ['transition', 'transition-property']) {
+    for (const v of valuesOf(el, styles, prop)) {
+      for (const name of idents(v)) {
+        if (name === 'all') return true;
+        if (HIDING_PROPS.has(name) && declared.has(name)) return true;
+      }
+    }
+  }
+  for (const prop of ['animation', 'animation-name']) {
+    for (const v of valuesOf(el, styles, prop)) {
+      // `none` is the only value that declares no animation.
+      if (idents(v).some((n) => n !== '' && n !== 'none')) return true;
+    }
+  }
+  return false;
+}
+
+/** Property names minus any animation property that does not cover the hiding. */
+function scalingProps(el: Element, styles: StyleIndexLike): string[] {
+  const props = declaredPropNames(el, styles);
+  if (animatesHiding(el, styles)) return props;
+  return props.filter(
+    (p) => !['transition', 'transition-property', 'animation', 'animation-name'].includes(
+      p.toLowerCase(),
+    ),
+  );
+}
+
 export function scaleFor(
   el: Element,
   text: string,
@@ -138,7 +196,7 @@ export function scaleFor(
     ceiling,
     text,
     classNames: signatureOf(el),
-    declaredProps: declaredPropNames(el, styles),
+    declaredProps: scalingProps(el, styles),
   });
 }
 
@@ -198,9 +256,33 @@ export function demoteIfWidget(el: Element, text: string, scaled: ScaleResult): 
 // Declared-value helpers — all additive
 // ---------------------------------------------------------------------------
 
-/** Every declared value of `prop` on this node, winner or not. */
+/**
+ * Every declared value of `prop` on this node, winner or not, resolved.
+ *
+ * Custom properties are substituted here for the same reason `carriersOn` does
+ * it: a rule comparing the literal string `var(--o)` to a number concludes the
+ * node is visible, and `:root{--o:0}` two lines above makes that wrong in every
+ * browser.
+ *
+ * A value that cannot be reduced is passed through UNCHANGED rather than
+ * dropped. PANE-HIDDEN-004 inspects the raw `var(...)` text to tell a
+ * host-supplied theme colour from a statically declared one, and returning
+ * nothing would take its undecided note with it — trading one silent absence
+ * for another. `unevaluableProps` is what reports these.
+ */
 export function valuesOf(el: Element, styles: StyleIndexLike, prop: string): string[] {
-  return styles.candidatesFor(el, prop).map((d) => d.value.trim().toLowerCase());
+  const out: string[] = [];
+  for (const d of styles.candidatesFor(el, prop)) {
+    const raw = d.value.trim();
+    if (!hasSubstitution(raw)) {
+      out.push(raw.toLowerCase());
+      continue;
+    }
+    const resolved = resolveDeclaredValues(el, styles, raw);
+    if (resolved.length === 0) out.push(raw.toLowerCase());
+    else for (const v of resolved) out.push(v.toLowerCase());
+  }
+  return out;
 }
 
 export function hasValue(

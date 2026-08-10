@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -247,4 +247,137 @@ describe('panelint capture, and replaying it', () => {
   });
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
+});
+
+// ---------------------------------------------------------------------------
+// Every flag the source tells a user to pass must be a flag the CLI registers.
+// ---------------------------------------------------------------------------
+
+/**
+ * The mirror of this file's opening premise.
+ *
+ * That miss was a documented command the CLI did not implement. This is the
+ * same defect pointed the other way: a diagnostic that instructs the operator
+ * to pass a flag which has never existed on any command. `checkLimit` built its
+ * remedy sentence by kebab-casing the limit key, so it invented six of them,
+ * and two more were hand-written in the acquire paths.
+ *
+ * Nothing caught it, because a fabricated flag looks exactly like a real one
+ * until someone types it. This derives the registered set from the source of
+ * `cli.ts` rather than from `--help`, so it does not depend on `dist/` being
+ * fresh, and it is the check that keeps `--limit` from quietly reappearing.
+ */
+describe('no diagnostic names a flag the CLI does not register', () => {
+  const cliSource = readFileSync(join(REPO, 'src', 'cli.ts'), 'utf8');
+
+  /** Flag tokens from every `.option(...)` / `.requiredOption(...)` spec. */
+  const registered = new Set<string>();
+  for (const m of cliSource.matchAll(/\.(?:option|requiredOption)\(\s*['"`]([^'"`]+)/g)) {
+    for (const token of (m[1] ?? '').split(/[,\s|]+/)) {
+      if (token.startsWith('--')) registered.add(token.replace(/^--no-/, '--'));
+    }
+  }
+
+  function sourceFiles(): string[] {
+    const root = join(REPO, 'src');
+    return readdirSync(root, { recursive: true, encoding: 'utf8' })
+      .filter((p) => p.endsWith('.ts') && p !== 'cli.ts')
+      .map((p) => join(root, p));
+  }
+
+  // An imperative verb immediately before the flag. Anchoring on the verb is
+  // what keeps the ~100 `--color-*` / `--font-*` CSS custom properties in the
+  // rule sources out of the results — those are quoted tokens, never advice.
+  const ADVICE = /\b(?:pass|raise|use|set|add|supply|try|re-?run|with)\b[^"'`.\n]{0,70}?(--[a-z][a-z0-9-]*)/gi;
+
+  it('finds the flags the CLI registers at all', () => {
+    // A parse that silently stopped matching would make every other assertion
+    // in this describe vacuously true.
+    expect(registered.has('--fail-on')).toBe(true);
+    expect(registered.has('--allow-spawn')).toBe(true);
+    expect(registered.has('--stdio')).toBe(true);
+    expect(registered.size).toBeGreaterThan(10);
+  });
+
+  it('names only registered flags in every imperative remedy sentence', () => {
+    const offenders: string[] = [];
+
+    for (const file of sourceFiles()) {
+      const text = readFileSync(file, 'utf8');
+      text.split('\n').forEach((line, i) => {
+        for (const m of line.matchAll(ADVICE)) {
+          const flag = (m[1] ?? '').replace(/-$/, '');
+          if (!registered.has(flag)) {
+            offenders.push(`${file.slice(REPO.length + 1)}:${i + 1} — ${flag}`);
+          }
+        }
+      });
+    }
+
+    expect(offenders, `these name a flag the CLI does not register:\n${offenders.join('\n')}`)
+      .toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A config the scanned tree poisoned must not quietly become "no config".
+// ---------------------------------------------------------------------------
+
+/**
+ * `loadConfig` sets `fatal` and discards every key when the file names a
+ * CLI-only one. Nothing checked it.
+ *
+ * The operator's own severity raises live in that same file, so a single added
+ * key deleted them and the scan reported clean. Measured before the check:
+ * `{"rules":{"PANE-INPUT-002":"critical"}}` gated at exit 1; the same file plus
+ * `"maxFileBytes": 5000000` exited 0 with the finding demoted back to its
+ * catalogue severity, and nothing on stderr.
+ *
+ * Rejecting the file is right. Reporting the resulting scan as clean is not.
+ */
+describe('a refused config is a scan error, not an absent config', () => {
+  const build = (config: string | null): string => {
+    const root = mkdtempSync(join(tmpdir(), 'panelint-fatalcfg-'));
+    mkdirSync(join(root, 'app'), { recursive: true });
+    writeFileSync(
+      join(root, 'server.js'),
+      'export const r = { uri: "ui://app/panel.html", mimeType: "text/html;profile=mcp-app" };\n',
+    );
+    writeFileSync(
+      join(root, 'app', 'panel.html'),
+      '<!doctype html><html><body><form><input autocomplete="cc-number"></form></body></html>\n',
+    );
+    if (config !== null) writeFileSync(join(root, 'panelint.config.json'), config);
+    return root;
+  };
+
+  it('honours a clean config that raises a severity', () => {
+    const root = build('{ "rules": { "PANE-INPUT-002": "critical" } }');
+    try {
+      expect(run(['scan', root]).code).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 2 and names the rejected key when the config is refused', () => {
+    const root = build('{ "maxFileBytes": 5000000, "rules": { "PANE-INPUT-002": "critical" } }');
+    try {
+      const r = run(['scan', root]);
+      expect(r.code).toBe(2);
+      expect(r.err).toContain('CONFIG_KEY_REJECTED');
+      expect(r.err).toContain('maxFileBytes');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('never lets a refused config produce the exit code of a clean scan', () => {
+    const root = build('{ "command": "node", "args": ["./x.js"], "rules": {} }');
+    try {
+      expect(run(['scan', root]).code).not.toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
