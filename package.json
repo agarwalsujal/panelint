@@ -76,7 +76,7 @@
     "domutils": "4.0.2",
     "parse5": "8.0.1",
     "parse5-htmlparser2-tree-adapter": "8.0.1",
-    "postcss": "8.5.25",
+    "postcss": "8.5.28",
     "postcss-selector-parser": "7.1.4",
     "tldts": "7.4.10"
   },
