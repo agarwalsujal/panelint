@@ -81,7 +81,7 @@
     "tldts": "7.4.10"
   },
   "devDependencies": {
-    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
     "@types/culori": "4.0.1",
     "@types/node": "26.1.2",
     "typescript": "7.0.2",
