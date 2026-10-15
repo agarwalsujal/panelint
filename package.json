@@ -63,7 +63,7 @@
     "sarif"
   ],
   "dependencies": {
-    "@csstools/selector-specificity": "6.0.0",
+    "@csstools/selector-specificity": "6.0.1",
     "@modelcontextprotocol/sdk": "1.30.0",
     "acorn": "8.18.0",
     "acorn-walk": "8.3.5",
